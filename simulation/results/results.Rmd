@@ -1,0 +1,105 @@
+---
+title: "results"
+output: html_document
+date: "2025-04-22"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(purrr)
+library(tibble)
+
+# List all files starting with "res_null" and ending with a seed number
+file_list <- list.files(pattern = "^res.*seed[0-9]+.*\\.csv$", full.names = TRUE)
+
+# Load CSVs, remove the first column, and attach seed number
+res_list <- lapply(file_list, function(file) {
+  # Read CSV and drop first column
+  df <- read.csv(file)[, -1]
+  
+  # Extract seed number using regex
+  seed <- sub(".*seed([0-9]+).*\\.csv$", "\\1", basename(file))
+  
+  # Add seed as a new column
+  df$seed <- as.integer(seed)
+  
+  return(df)
+})
+
+res_df <- do.call(rbind, res_list)
+
+res_mixture <- res_df %>% filter(model == "mixture")
+res_mixture <- res_mixture %>%
+  group_by(seed) %>%
+  slice_min(order_by = NLL, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+res_null <- res_df %>% filter(model == "null") %>% arrange(seed)
+res_sum <- res_df %>% filter(model == "sum") %>% arrange(seed)
+
+res_df <- rbind(res_mixture, res_null, res_sum)
+
+######### bootstrap #########  
+# List all files starting with "bootstrap" and ending with a seed number
+file_list <- list.files(pattern = "^bootstrap.*seed[0-9]+.*\\.csv$", full.names = TRUE)
+
+# Load CSVs, remove the first column, and attach seed number
+res_list <- lapply(file_list, function(file) {
+  # Read CSV and drop first column
+  df <- read.csv(file)
+  
+  # Extract seed number using regex
+  seed <- sub(".*seed([0-9]+).*\\.csv$", "\\1", basename(file))
+  
+  # Add seed as a new column
+  df$seed <- as.integer(seed)
+  
+  return(df)
+})
+
+res_boot <- do.call(rbind, res_list) %>%
+  group_by(model, bootstrap, seed) %>%
+  slice_min(NLL, with_ties = FALSE) %>%
+  ungroup() %>%
+  arrange(model, seed, bootstrap)
+
+# Define desired quantiles
+q_probs <- c(0.025, 0.975)
+q_labels <- paste0("q", q_probs * 100)
+vars <- c("w1", "NLL", "AIC", "mean", "phi1", "phi2")
+
+# Compute quantiles in wide format
+quantiles_df <- res_boot %>%
+  group_by(seed, model) %>%
+  group_split() %>%
+  map_dfr(function(subdf) {
+    seed_val <- unique(subdf$seed)
+    model_val <- unique(subdf$model)
+    
+    # Compute quantiles for each variable and flatten into a named vector
+    q_named_vec <- map(vars, function(v) {
+      q_vals <- quantile(subdf[[v]], probs = q_probs, na.rm = TRUE)
+      setNames(q_vals, paste0(v, "_q", q_probs * 100))
+    }) %>%
+      flatten_dbl()
+    
+    # Wrap in list to create a one-row tibble
+    tibble(seed = seed_val, model = model_val, !!!as.list(q_named_vec))
+  })
+
+res_df <- inner_join(res_df, quantiles_df)
+```
+
+```{r}
+ggplot(res_df %>% filter(model == "null"), aes(x = seed, y = mean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = `mean_q2.5`, ymax = `mean_q97.5`), width = 0.2) +
+  theme_bw()
+
+ggplot(res_df, aes(x = seed, y = AIC, color = model)) +
+  geom_point() +
+  theme_bw()
+```
+
