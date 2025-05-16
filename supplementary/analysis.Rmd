@@ -28,13 +28,11 @@ get_exp_freq_2M <- function(psi, phi, M) {
 }
 
 # read coalescent simulation results
-file_paths <- list.files("../simulation/results/", pattern = "^l_psi_seed.*\\.csv$", full.names = TRUE)
-# Read and combine all the CSV files
-combined <- do.call(rbind, lapply(file_paths, read.csv))
+l_psi <- read.csv("l_psi/l_psi_sim.csv")
 
 # gather all of the observed tract lengths and psi_j values from the 20 regions
-sim.0.5.l <- combined$l
-sim.0.5.psi <- combined$psi
+sim.0.5.l <- l_psi$l
+sim.0.5.psi <- l_psi$psi
 
 # only keep observed tract lengths smaller than or equal to 1500 bp
 keep <- which(sim.0.5.l <= 1500)
@@ -49,11 +47,13 @@ sim.0.5.psi <- sim.0.5.psi[keep]
 
 # estimating the freq. of singletons using the model
 sim.est.freq.singletons.M <- lapply(sim.0.5.psi, pL_geom_1M, 1, 1/300, 1500) %>% unlist() %>% mean()
+sim.est.freq.singletons.M
 
 # actual freq. of singletons
 sim.obs.cnts <- as.data.frame(sim.0.5.l)
 colnames(sim.obs.cnts) = "l" 
 sim.freq.singletons.M <- sum(sim.obs.cnts$l == 1)/nrow(sim.obs.cnts)
+sim.freq.singletons.M
 
 # comparing CDFs
 
@@ -90,9 +90,9 @@ ggsave("figs/cdf.p1.png", width = 12, height = 6)
 ### In this section, we compare the empirical CDF of observed tract lengths from the simulation without LD to the truncated CDF of L
 
 # loading in observed tract lengths and psi_j values from this simulation
-sim.tracts <- readRDS("res.geom.rds")
-sim.tracts.l <- sim.tracts[[1]][[4]]
-sim.tracts.psi <- sim.tracts[[1]][[5]]
+sim.tracts <- read.csv("l_psi/l_psi_robustness.csv")
+sim.tracts.l <- sim.tracts$l
+sim.tracts.psi <- sim.tracts$psi
 
 # filter tracts
 keep <- which(sim.tracts.l <= 1500)
@@ -102,7 +102,7 @@ sim.tracts.psi <- sim.tracts.psi[keep]
 # comparing freq. of singletons
 
 # estimating the freq. of singletons using the model
-sim.tracts.est.freq.singletons.M <- lapply(sim.tracts.psi, pL_geom_1M, 1, 1/300, 1500) %>% unlist() %>% mean()
+sim.tracts.est.freq.singletons.M <- lapply(sim.tracts.psi, pL_geom_1M, 1, 1/100, 1500) %>% unlist() %>% mean()
 
 # actual freq. of singletons
 sim.tracts.obs.cnts <- as.data.frame(sim.tracts.l)
