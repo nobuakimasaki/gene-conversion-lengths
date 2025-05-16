@@ -5,9 +5,26 @@ date: "2025-04-22"
 ---
 
 ```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+
 res_null <- read.csv("res_null.csv")
 res_sum <- read.csv("res_sum.csv")
-res_mixture <- read.csv("res_mixture.csv")
+res_mixture <- read.csv("res_mixture.csv") %>% arrange(NLL)
+res_mixture <- res_mixture[1,]
+
+res_df <- rbind(res_null, res_sum, res_mixture)
+res_df$mean1 <- 1/res_df$phi1
+res_df$mean2 <- 1/res_df$phi2
+
+long_est <- res_df %>%
+  select(-X) %>%  # drop X column
+  pivot_longer(
+    cols = c(NLL, AIC, mean, w1, phi1, phi2, mean1, mean2),
+    names_to = "variable",
+    values_to = "est")
 
 # ######### bootstrap #########  
 # List all files starting with "bootstrap" and ending with a seed number
@@ -23,6 +40,9 @@ res_list <- lapply(file_list, function(file) {
 
   # Add seed as a new column
   df$seed <- as.integer(seed)
+  
+  df$mean1 <- 1/df$phi1
+  df$mean2 <- 1/df$phi2
 
   return(df)
 })
@@ -32,33 +52,57 @@ res_boot <- do.call(rbind, res_list) %>%
   slice_min(NLL, with_ties = FALSE) %>%
   ungroup() %>%
   arrange(model, seed, bootstrap)
+
+res_boot <- res_boot %>%
+  mutate(index = group_indices(., seed, bootstrap)) %>% filter(index <= 500)
  
 # Define desired quantiles
 q_probs <- c(0.025, 0.975)
+vars <- c("NLL", "AIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
 q_labels <- paste0("q", q_probs * 100)
-vars <- c("w1", "NLL", "AIC", "mean", "phi1", "phi2")
 
-# Compute quantiles grouped by model
+# Compute quantiles grouped by model, wide format for quantiles
 quantiles_by_model <- res_boot %>%
   group_by(model) %>%
   group_split() %>%
   map_dfr(function(subdf) {
     model_val <- unique(subdf$model)
-
-    # Compute quantiles for each variable
-    q_named_vec <- map(vars, function(v) {
+    
+    map_dfr(vars, function(v) {
       q_vals <- quantile(subdf[[v]], probs = q_probs, na.rm = TRUE)
-      setNames(q_vals, paste0(v, "_q", q_probs * 100))
-    }) %>%
-      flatten_dbl()
-
-    tibble(model = model_val, !!!as.list(q_named_vec))
+      
+      tibble(
+        model = model_val,
+        variable = v,
+        q2.5 = q_vals[[1]],
+        q97.5 = q_vals[[2]]
+      )
+    })
   })
 
-res_df <- inner_join(res_df, quantiles_df)
+res_df <- inner_join(long_est, quantiles_by_model)
 ```
 
 ```{r}
-min(res_mixture$NLL)
+mixture_plot_df <- res_df %>% filter(model == "mixture")
+
+ggplot(mixture_plot_df %>% filter(variable %in% c("mean", "mean1", "mean2", "w1")), aes(x = model, y = est)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = q2.5, ymax = q97.5), width = 0.2) +
+  facet_wrap(vars(variable), scales = "free_y") + 
+  theme_bw() +
+  labs(y = "Estimate (with 95% CI)", x = "Model")
+```
+```{r}
+# Construct file paths for chromosomes 1 to 22
+file_paths <- paste0("../data/chr", 1:22, ".ibdclust2cM_trim1_combinedoffsets_v6.inf_obs_tracts2")
+
+# Read and bind all files into a single data frame
+all_data <- map_dfr(file_paths, read.table, header = FALSE)
+
+all_data$l <- all_data$V2 - all_data$V1 + 1
+
+sum(all_data$l > 1500)
+sum(all_data$l > 1500)/length(all_data$l)
 ```
 

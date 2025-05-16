@@ -1,0 +1,171 @@
+---
+title: "expected_counts"
+author: "Nobuaki Masaki"
+date: "5/1/2024"
+output: html_document
+---
+
+```{r, include=FALSE}
+### This file is used to run the analyses in the Supplementary Materials
+
+# load in packages
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(zoo)
+source('model.R')
+
+# function to estimate the probability that an observed tract length is 1 bp
+pL_geom_1M <- function(psi, l, phi, M) {
+  if (l == 1) {return(phi*psi/(phi*psi + psi^2*(1 - phi - (1 - phi)^M)))}
+  else {return(phi*(1-phi)^(l-1)*psi^2/(phi*psi + psi^2*(1 - phi - (1 - phi)^M)))}
+}
+
+# probability mass function of L truncated between 2 and 1500 bp
+get_exp_freq_2M <- function(psi, phi, M) {
+  density <- lapply(2:1500, pL_geom_2M, psi, phi, M) %>% unlist()
+  return(density)
+}
+
+# read coalescent simulation results
+file_paths <- list.files("../simulation/results/", pattern = "^l_psi_seed.*\\.csv$", full.names = TRUE)
+# Read and combine all the CSV files
+combined <- do.call(rbind, lapply(file_paths, read.csv))
+
+# gather all of the observed tract lengths and psi_j values from the 20 regions
+sim.0.5.l <- combined$l
+sim.0.5.psi <- combined$psi
+
+# only keep observed tract lengths smaller than or equal to 1500 bp
+keep <- which(sim.0.5.l <= 1500)
+sim.0.5.l <- sim.0.5.l[keep]
+sim.0.5.psi <- sim.0.5.psi[keep]
+```
+
+```{r}
+### In this section, we compare the empirical CDF of observed tract lengths from the coalescent simulation to the truncated CDF of L
+
+# comparing freq. of singletons
+
+# estimating the freq. of singletons using the model
+sim.est.freq.singletons.M <- lapply(sim.0.5.psi, pL_geom_1M, 1, 1/300, 1500) %>% unlist() %>% mean()
+
+# actual freq. of singletons
+sim.obs.cnts <- as.data.frame(sim.0.5.l)
+colnames(sim.obs.cnts) = "l" 
+sim.freq.singletons.M <- sum(sim.obs.cnts$l == 1)/nrow(sim.obs.cnts)
+
+# comparing CDFs
+
+# empirical CDF truncated between 2 and 1500 bp
+sim.obs.cnts.df <- sim.obs.cnts %>% filter(l != 1) %>% group_by(l) %>% summarize(counts = n())
+sim.obs.freq.df <- sim.obs.cnts.df
+sim.obs.freq.df$freq <- sim.obs.freq.df$counts/sum(sim.obs.freq.df$counts)
+sim.obs.freq.df$cdf.emp <- cumsum(sim.obs.freq.df$freq)
+
+# CDF of L truncated between 2 and 1500 bp
+exp.freq.2M.df <- get_exp_freq_2M(1, 1/300, 1500) %>% as.data.frame()
+exp.freq.2M.df$l <- 2:1500
+exp.freq.2M.df$cdf.exp <- cumsum(exp.freq.2M.df$.)
+
+# joining the two dataframes
+sim.freq.df <- left_join(exp.freq.2M.df, sim.obs.freq.df, by = "l") %>% select(l, cdf.exp, cdf.emp) %>% gather(2:3, key = "exp/emp", value = "cdf")
+sim.freq.df$`exp/emp` <- forcats::fct_relevel(sim.freq.df$`exp/emp`, "cdf.exp", "cdf.emp")
+# there are NA entries for the empirical CDF, because some observed tract lengths are not found
+sim.freq.df$cdf <- na.locf(sim.freq.df$cdf)
+
+# plotting the two CDFs
+p1 <- ggplot(sim.freq.df %>% filter(`exp/emp` %in% c("cdf.exp", "cdf.emp")), aes(x = l, y = cdf, color = `exp/emp`)) + geom_line(size = 1, alpha = 0.5) + theme_bw() + labs(y = "Cumulative density", x = expression("\u2113"), color = "") + theme(text = element_text(size=22), plot.title = element_text(hjust = 0)) + ylim(0, 1.01) + 
+  scale_color_manual(
+  values = c("cdf.exp" = "#000000", "cdf.emp" = "#E41A1C"), 
+  labels = c(expression(F[2]^{1500} * "(" * "\u2113" ~ "|" ~ phi == 300 * ")"), expression(paste(widehat(F), ("\u2113"))))) +
+  scale_x_continuous(breaks = c(2, 500, 1000, 1500))
+
+p1
+
+ggsave("figs/cdf.p1.png", width = 12, height = 6)
+```
+
+```{r}
+### In this section, we compare the empirical CDF of observed tract lengths from the simulation without LD to the truncated CDF of L
+
+# loading in observed tract lengths and psi_j values from this simulation
+sim.tracts <- readRDS("res.geom.rds")
+sim.tracts.l <- sim.tracts[[1]][[4]]
+sim.tracts.psi <- sim.tracts[[1]][[5]]
+
+# filter tracts
+keep <- which(sim.tracts.l <= 1500)
+sim.tracts.l <- sim.tracts.l[keep]
+sim.tracts.psi <- sim.tracts.psi[keep]
+
+# comparing freq. of singletons
+
+# estimating the freq. of singletons using the model
+sim.tracts.est.freq.singletons.M <- lapply(sim.tracts.psi, pL_geom_1M, 1, 1/300, 1500) %>% unlist() %>% mean()
+
+# actual freq. of singletons
+sim.tracts.obs.cnts <- as.data.frame(sim.tracts.l)
+colnames(sim.tracts.obs.cnts) = "l" 
+sim.tracts.freq.singletons.M <- sum(sim.tracts.obs.cnts$l == 1)/nrow(sim.tracts.obs.cnts)
+
+# comparing CDFs
+
+# empirical CDF truncated between 2 and 1500 bp
+sim.tracts.obs.cnts.df <- sim.tracts.obs.cnts %>% filter(l != 1) %>% group_by(l) %>% summarize(counts = n())
+sim.tracts.obs.freq.df <- sim.tracts.obs.cnts.df
+sim.tracts.obs.freq.df$freq <- sim.tracts.obs.freq.df$counts/sum(sim.tracts.obs.freq.df$counts)
+sim.tracts.obs.freq.df$cdf.emp <- cumsum(sim.tracts.obs.freq.df$freq)
+
+# joining the two dataframes
+sim.tracts.freq.df <- left_join(exp.freq.2M.df, sim.tracts.obs.freq.df, by = "l") %>% select(l, cdf.exp, cdf.emp) %>% gather(2:3, key = "exp/emp", value = "cdf")
+sim.tracts.freq.df$`exp/emp` <- forcats::fct_relevel(sim.tracts.freq.df$`exp/emp`, "cdf.exp", "cdf.emp")
+# there are NA entries for the empirical CDF, because some observed tract lengths are not found
+sim.tracts.freq.df$cdf <- na.locf(sim.tracts.freq.df$cdf)
+
+# plotting the two CDFs
+p2 <- ggplot(sim.tracts.freq.df %>% filter(`exp/emp` %in% c("cdf.exp", "cdf.emp")), aes(x = l, y = cdf, color = `exp/emp`)) + geom_line(size = 1, alpha = 0.5) + theme_bw() + labs(y = "Cumulative density", x = expression("\u2113"), color = "") + theme(text = element_text(size=22), plot.title = element_text(hjust = 0)) + ylim(0, 1.01) + 
+  scale_color_manual(
+  values = c("cdf.exp" = "#000000", "cdf.emp" = "#E41A1C"), 
+  labels = c(expression(F[2]^{1500} * "(" * "\u2113" ~ "|" ~ phi == 300 * ")"), expression(paste(widehat(F), ("\u2113"))))) +
+  scale_x_continuous(breaks = c(2, 500, 1000, 1500))
+
+p2
+
+ggsave("figs/cdf.p2.png", width = 12, height = 6)
+```
+
+```{r}
+# #?. empirical CDF in main simulation is equal to empirical CDF when simulating from the vcf file
+#   # - observed tracts are detected correctly
+# 
+# sim.vcf <- read.csv("../sim_vcf/sim_tracts_vcf_5000000.csv")
+# sim.vcf <- sim.vcf %>% filter(X0 <= 1500)
+# sim.vcf.df <- sim.vcf %>% group_by(X0) %>% summarize(count = n())
+# sim.vcf.df <- sim.vcf.df[-1,]
+# sim.vcf.df$freq <- sim.vcf.df$count/sum(sim.vcf.df$count)
+# sim.vcf.df$cdf <- cumsum(sim.vcf.df$freq)
+# sim.vcf.df$l <- sim.vcf.df$X0
+# sim.vcf.df$analysis <- "vcf"
+# sim.vcf.df <- select(sim.vcf.df, l, analysis, cdf)
+# 
+# sim.obs.freq.df.full <- sim.obs.cnts %>% group_by(l) %>% summarize(counts = n())
+# sim.obs.freq.df.full$freq <- sim.obs.freq.df.full$counts/sum(sim.obs.freq.df.full$counts)
+# sim.obs.freq.df.full$cdf <- cumsum(sim.obs.freq.df.full$freq)
+# sim.obs.freq.df.full$analysis <- "coalescent"
+# sim.obs.freq.df.full <- sim.obs.freq.df.full %>% select(l, analysis, cdf)
+# 
+# sim.vcf.df <- rbind(sim.obs.freq.df.full, sim.vcf.df)
+# 
+# sim.vcf.df$cdf <- na.locf(sim.vcf.df$cdf)
+# 
+# p3 <- ggplot(sim.vcf.df %>% filter(analysis %in% c("coalescent", "vcf")), aes(x = l, y = cdf, color = analysis)) + geom_line(size = 1, alpha = 0.5) + theme_bw() + labs(y = "Cumulative density", x = expression("\u2113"), color = "") + theme(text = element_text(size=22), plot.title = element_text(hjust = 0.5)) + ylim(0, 1.01) + 
+#   scale_color_manual(
+#   values = c("coalescent" = "#E41A1C", "vcf" = "#377EB8"), 
+#   labels = c(expression(paste(widehat(F)^{multiIBD}, ("\u2113"))), expression(paste(widehat(F)^{individuals}, ("\u2113"))))) +
+#   scale_x_continuous(breaks = c(1, 500, 1000, 1500))
+# 
+# p3
+# 
+# ggsave("cdf.p3.png", width = 9, height = 6)
+```

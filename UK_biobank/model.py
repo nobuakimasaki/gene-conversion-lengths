@@ -88,12 +88,12 @@ def optim_geom(psi_lst, l_lst, M):
 # We start the optimization from the four corners of the parameter space, and pick the result with the smallest nll. 
 def optim_mixture(w1, psi_lst, l_lst, M):
     # Define the grid of phi values
-    phi_vals = [0.0005, 0.05]
+    phi_vals = [0.0005, 0.1]
     
     # All combinations of phi1 and phi2
     starts = list(product(phi_vals, repeat=2))
     
-    bounds = [(0.0005, 0.05), (0.0005, 0.05)]
+    bounds = [(0.0005, 0.1), (0.0005, 0.1)]
     best_result = None
 
     for start in starts:
@@ -218,7 +218,13 @@ if __name__ == "__main__":
     test_3 = pL_geom_2M_mixture(4, 0.01, 0.2, 0.02, 0.03, 1500)
     print(test_3)
 
-    print("\nRunning full model fitting...")
-    mixture, null_row, sum_row = fit_model_M(psi_lst, l_lst, M)
-    print("\nResults:")
-    print(mixture, null_row, sum_row)
+    # print("\nRunning full model fitting...")
+    # mixture, null_row, sum_row = fit_model_M(psi_lst, l_lst, M)
+    # print("\nResults:")
+    # print(mixture, null_row, sum_row)
+
+    w1_grid = np.concatenate([
+    np.arange(0.002, 0.01025, 0.00025),  # fine grid: 0.002 to 0.01
+    np.arange(0.05, 0.51, 0.05)])
+
+    print(w1_grid)
