@@ -5,6 +5,7 @@ library(data.table)
 library(purrr)
 library(parallel)
 source("model.R")
+set.seed(123)  # or use i as seed inside your loop
 
 # Read in Chromosome 1 from UK Biobank whole autosome data
 MAF.df <- read.table("/projects/browning/brwnlab/sharon/for_nobu/gc_length/ukbiobank/chr1.allregions.pmaf.gz")
@@ -24,7 +25,7 @@ psi[exc$pos] <- 0
 do_one_geom <- function(i, psi, length_chrom) {
   print(paste0("iteration: ", i))
   
-  actual_trts <- sim_tracts(10^5, 1/300, length_chrom, "geom")
+  actual_trts <- sim_tracts(10^6, 1/300, length_chrom, "geom")
   obs_trts <- suppressWarnings(lapply(actual_trts, sim_gene_conv, psi))
   
   # Remove 0s or tracts greater than 1500
@@ -49,6 +50,6 @@ do_one_geom <- function(i, psi, length_chrom) {
   return(list(l_lst, psi_lst))
 }
 
-res.geom <- mclapply(1:300, do_one_geom, psi, length_chrom, mc.cores = 15)
+res.geom <- mclapply(1, do_one_geom, psi, length_chrom, mc.cores = 15)
 
 saveRDS(res.geom, file = "res.geom.rds")

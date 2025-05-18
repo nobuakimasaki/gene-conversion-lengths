@@ -90,9 +90,9 @@ ggsave("figs/cdf.p1.png", width = 12, height = 6)
 ### In this section, we compare the empirical CDF of observed tract lengths from the simulation without LD to the truncated CDF of L
 
 # loading in observed tract lengths and psi_j values from this simulation
-sim.tracts <- read.csv("l_psi/l_psi_robustness.csv")
-sim.tracts.l <- sim.tracts$l
-sim.tracts.psi <- sim.tracts$psi
+sim.tracts <- readRDS("sim_tracts/res.geom.rds")[[1]]
+sim.tracts.l <- sim.tracts[[1]]
+sim.tracts.psi <- sim.tracts[[2]]
 
 # filter tracts
 keep <- which(sim.tracts.l <= 1500)
@@ -102,12 +102,14 @@ sim.tracts.psi <- sim.tracts.psi[keep]
 # comparing freq. of singletons
 
 # estimating the freq. of singletons using the model
-sim.tracts.est.freq.singletons.M <- lapply(sim.tracts.psi, pL_geom_1M, 1, 1/100, 1500) %>% unlist() %>% mean()
+sim.tracts.est.freq.singletons.M <- lapply(sim.tracts.psi, pL_geom_1M, 1, 1/300, 1500) %>% unlist() %>% mean()
+sim.tracts.est.freq.singletons.M
 
 # actual freq. of singletons
 sim.tracts.obs.cnts <- as.data.frame(sim.tracts.l)
 colnames(sim.tracts.obs.cnts) = "l" 
 sim.tracts.freq.singletons.M <- sum(sim.tracts.obs.cnts$l == 1)/nrow(sim.tracts.obs.cnts)
+sim.tracts.freq.singletons.M
 
 # comparing CDFs
 
