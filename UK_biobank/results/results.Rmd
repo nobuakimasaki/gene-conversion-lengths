@@ -10,6 +10,8 @@ library(tidyr)
 library(purrr)
 library(ggplot2)
 
+l_psi <- read.csv("l_psi.csv")
+
 res_null <- read.csv("res_null.csv")
 res_sum <- read.csv("res_sum.csv")
 res_mixture <- read.csv("res_mixture.csv") %>% arrange(NLL)
@@ -81,6 +83,13 @@ quantiles_by_model <- res_boot %>%
   })
 
 res_df <- inner_join(long_est, quantiles_by_model)
+
+res_AIC <- res_df %>% filter(variable == "AIC")
+res_AIC$est[1]
+res_AIC$est[2]
+res_AIC$est[3]
+
+res_AIC$est[1] - res_AIC$est[3]
 ```
 
 ```{r}

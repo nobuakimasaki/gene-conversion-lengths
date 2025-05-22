@@ -175,6 +175,8 @@ max(AIC_mixture - AIC_null)
 
 min(AIC_sum - AIC_null) # larger values prefer null
 max(AIC_sum - AIC_null) 
+
+AIC_null - AIC_mixture
 ```
 
 ```{r}

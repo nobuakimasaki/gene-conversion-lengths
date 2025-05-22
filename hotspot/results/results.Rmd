@@ -1,0 +1,124 @@
+---
+title: "Results"
+output: html_document
+date: "2025-05-19"
+---
+
+```{r}
+library(dplyr)
+library(purrr)
+library(tibble)
+library(readr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+
+l_psi_hotspot <- read.csv("l_psi_hotspot.csv")
+l_psi_nonhotspot <- read.csv("l_psi_nonhotspot.csv")
+nrow(l_psi_hotspot)
+nrow(l_psi_nonhotspot)
+nrow(l_psi_hotspot) + nrow(l_psi_nonhotspot)
+
+res_null_hotspot <- read.csv("res_null_hotspot.csv")
+res_null_hotspot$type <- "hotspot"
+res_null_nonhotspot <- read.csv("res_null_nonhotspot.csv")
+res_null_nonhotspot$type <- "nonhotspot"
+
+res_sum_hotspot <- read.csv("res_sum_hotspot.csv")
+res_sum_hotspot$type <- "hotspot"
+res_sum_nonhotspot <- read.csv("res_sum_nonhotspot.csv")
+res_sum_nonhotspot$type <- "nonhotspot"
+
+res_mixture_hotspot <- read.csv("res_mixture_hotspot.csv") %>% arrange(NLL) 
+res_mixture_nonhotspot <- read.csv("res_mixture_nonhotspot.csv") %>% arrange(NLL)
+res_mixture_hotspot <- res_mixture_hotspot[1,]
+res_mixture_hotspot$type <- "hotspot"
+res_mixture_nonhotspot <- res_mixture_nonhotspot[1,]
+res_mixture_nonhotspot$type <- "nonhotspot"
+
+res_df <- rbind(res_null_hotspot, res_null_nonhotspot, 
+                res_sum_hotspot, res_sum_nonhotspot,
+                res_mixture_hotspot, res_mixture_nonhotspot)
+res_df$mean1 <- 1/res_df$phi1
+res_df$mean2 <- 1/res_df$phi2
+
+long_est <- res_df %>%
+  select(-X) %>%  # drop X column
+  pivot_longer(
+    cols = c(NLL, AIC, mean, w1, phi1, phi2, mean1, mean2),
+    names_to = "variable",
+    values_to = "est")
+
+long_est_hotspot <- long_est %>% filter(type == "hotspot")
+long_est_hotspot %>% filter(model == "mixture" & variable == "AIC") %>% select(est) - long_est_hotspot %>% filter(model == "null" & variable == "AIC") %>% select(est)
+
+long_est_nonhotspot <- long_est %>% filter(type == "nonhotspot")
+long_est_nonhotspot %>% filter(model == "mixture" & variable == "AIC") %>% select(est) - long_est_nonhotspot %>% filter(model == "null" & variable == "AIC") %>% select(est)
+
+315042/876584
+```
+
+```{r}
+# 1. List all relevant bootstrap files
+file_list <- list.files(pattern = "^bootstrap_res_.*hotspot_seed[0-9]+.*\\.csv$", full.names = TRUE)
+
+# 2. Load and process each file
+res_list <- lapply(file_list, function(file) {
+  df <- read.csv(file)
+
+  # Extract seed number
+  seed <- as.integer(str_match(basename(file), "seed(\\d+)")[,2])
+  
+  # Extract type: hotspot or nonhotspot
+  type <- ifelse(str_detect(file, "nonhotspot"), "nonhotspot", "hotspot")
+  
+  # Add seed and type columns
+  df$seed <- seed
+  df$type <- type
+  
+  # Add mean1 and mean2
+  df$mean1 <- 1 / df$phi1
+  df$mean2 <- 1 / df$phi2
+  
+  return(df)
+})
+
+# 3. Combine all data into one data frame
+res_boot <- do.call(rbind, res_list) %>%
+  group_by(model, bootstrap, seed, type) %>%
+  slice_min(NLL, with_ties = FALSE) %>%
+  ungroup() %>%
+  arrange(model, seed, bootstrap)
+
+# 4. Limit to first 500 replicates per seed/bootstrap
+res_boot <- res_boot %>%
+  mutate(index = group_indices(., seed, bootstrap)) %>%
+  filter(index <= 500)
+
+# 5. Compute quantiles grouped by model and type
+q_probs <- c(0.025, 0.975)
+vars <- c("NLL", "AIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
+
+quantiles_by_model_type <- res_boot %>%
+  group_by(model, type) %>%
+  group_split() %>%
+  map_dfr(function(subdf) {
+    model_val <- unique(subdf$model)
+    type_val <- unique(subdf$type)
+    
+    map_dfr(vars, function(v) {
+      q_vals <- quantile(subdf[[v]], probs = q_probs, na.rm = TRUE)
+      tibble(
+        model = model_val,
+        type = type_val,
+        variable = v,
+        q2.5 = q_vals[[1]],
+        q97.5 = q_vals[[2]]
+      )
+    })
+  })
+
+# 6. Merge with long_est if available
+res_df <- inner_join(long_est, quantiles_by_model_type, by = c("model", "variable", "type"))
+```
+
