@@ -66,13 +66,17 @@ def get_l_psi(MAF_df, df, M, region, MAF_ceil):
 def stratify_tracts_by_hotspot(tracts_df, hotspots_chr):
     tracts_df = tracts_df.copy()
     tracts_df.columns = range(tracts_df.shape[1])
-    tracts_df['overlaps_hotspot'] = False
 
+    # Compute integer midpoint
+    tracts_df['midpoint'] = ((tracts_df[0] + tracts_df[1]) // 2).astype(int)
+    tracts_df['overlaps_hotspot'] = False  # Keep column name for compatibility
+
+    # Mark as True if midpoint is within any hotspot
     for _, row in hotspots_chr.iterrows():
         h_start = row["first_pos"]
         h_end = row["last_pos"]
-        overlaps = (tracts_df[0] <= h_end) & (tracts_df[1] >= h_start)
-        tracts_df.loc[overlaps, 'overlaps_hotspot'] = True
+        in_hotspot = (tracts_df['midpoint'] >= h_start) & (tracts_df['midpoint'] <= h_end)
+        tracts_df.loc[in_hotspot, 'overlaps_hotspot'] = True
 
     return tracts_df
 

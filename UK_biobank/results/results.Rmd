@@ -17,10 +17,12 @@ res_sum <- read.csv("res_sum.csv")
 res_mixture <- read.csv("res_mixture.csv") %>% arrange(NLL)
 res_mixture <- res_mixture[1,]
 
+# mean1 and mean2 only useful for mixture model
 res_df <- rbind(res_null, res_sum, res_mixture)
 res_df$mean1 <- 1/res_df$phi1
 res_df$mean2 <- 1/res_df$phi2
 
+# convert to long
 long_est <- res_df %>%
   select(-X) %>%  # drop X column
   pivot_longer(
@@ -49,14 +51,26 @@ res_list <- lapply(file_list, function(file) {
   return(df)
 })
 
+# in each iteration of the bootstrap and for each model, get the estimates with the smallest NLL (only relevant for mixture)
 res_boot <- do.call(rbind, res_list) %>%
   group_by(model, bootstrap, seed) %>%
   slice_min(NLL, with_ties = FALSE) %>%
   ungroup() %>%
   arrange(model, seed, bootstrap)
 
+# assign different index for each seed and bootstrap
 res_boot <- res_boot %>%
-  mutate(index = group_indices(., seed, bootstrap)) %>% filter(index <= 500)
+  mutate(index = group_indices(., seed, bootstrap)) 
+
+# there should be 42*12*3 rows (seems ok)
+
+# check results for each model
+res_boot_null <- res_boot %>% filter(model == "null")
+res_boot_sum <- res_boot %>% filter(model == "sum")
+res_boot_mixture <- res_boot %>% filter(model == "mixture")
+
+# limit bootstrap index to 500
+res_boot <- res_boot %>% filter(index <= 500)
  
 # Define desired quantiles
 q_probs <- c(0.025, 0.975)
@@ -108,10 +122,22 @@ file_paths <- paste0("../data/chr", 1:22, ".ibdclust2cM_trim1_combinedoffsets_v6
 
 # Read and bind all files into a single data frame
 all_data <- map_dfr(file_paths, read.table, header = FALSE)
-
 all_data$l <- all_data$V2 - all_data$V1 + 1
 
-sum(all_data$l > 1500)
-sum(all_data$l > 1500)/length(all_data$l)
+# Calculating various sample sizes
+n1 <- sum(all_data$l == 1)
+n <- nrow(all_data)
+n
+n1
+(n-n1)
+n1/n
+(n-n1)/n
+
+n1500 <- sum(all_data$l > 1500)
+n1500
+n1500/n
+
+n_est <- sum(all_data$l != 1 & all_data$l <= 1500)
+n_est
 ```
 

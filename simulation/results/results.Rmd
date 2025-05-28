@@ -14,7 +14,6 @@ library(patchwork)
 
 # Load main results files
 file_list <- list.files(pattern = "^res.*seed[0-9]+.*\\.csv$", full.names = TRUE)
-
 res_df <- lapply(file_list, function(file) {
   df <- read.csv(file)[, -1]  # Drop first column
   seed <- as.integer(sub(".*seed([0-9]+).*\\.csv$", "\\1", basename(file)))
@@ -26,6 +25,8 @@ res_df <- lapply(file_list, function(file) {
   bind_rows()
 
 # Split by model
+
+# For mixture model results, for each seed, get the optimization with the smallest resulting NLL
 res_mixture <- res_df %>%
   filter(model == "mixture") %>%
   group_by(seed) %>%
@@ -41,6 +42,8 @@ res_df <- bind_rows(res_mixture, res_null, res_sum)
 # Load bootstrap files
 file_list_bootstrap <- list.files(pattern = "^bootstrap.*seed[0-9]+.*\\.csv$", full.names = TRUE)
 
+# In each bootstrap file, paste seed and additional information about the mean. 
+# Then, for each model, seed, bootstrap iter., get the optimization resulting in smallest NLL
 res_boot <- lapply(file_list_bootstrap, function(file) {
   df <- read.csv(file)
   seed <- as.integer(sub(".*seed([0-9]+).*\\.csv$", "\\1", basename(file)))
@@ -55,10 +58,13 @@ res_boot <- lapply(file_list_bootstrap, function(file) {
   ungroup() %>%
   arrange(model, seed, bootstrap)
 
+# 500*3*20 = 30000 (ok)
+
 # Compute quantiles for bootstrap
 q_probs <- c(0.025, 0.975)
 vars <- c("NLL", "AIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
 
+# For each seed and model, calculate quantile
 quantiles_df <- res_boot %>%
   group_by(seed, model) %>%
   group_split() %>%
@@ -205,5 +211,21 @@ counts <- files %>%
 # View result
 min(counts$count)
 max(counts$count)
+
+# Read and annotate each file with the seed number
+data <- files %>%
+  map_dfr(~ {
+    seed <- str_extract(.x, "(?<=l_psi_seed)\\d+")
+    
+    read_csv(.x) %>%
+      filter(l >= 2, l <= 1500) %>%
+      mutate(seed = as.integer(seed))
+  })
+
+counts2 <- data %>% group_by(seed) %>% summarize(count = n())
+
+# View result
+min(counts2$count)
+max(counts2$count)
 ```
 

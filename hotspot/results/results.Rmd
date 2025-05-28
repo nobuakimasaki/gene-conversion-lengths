@@ -13,22 +13,28 @@ library(tidyr)
 library(stringr)
 library(ggplot2)
 
+# loading in tract information used for estimation
 l_psi_hotspot <- read.csv("l_psi_hotspot.csv")
 l_psi_nonhotspot <- read.csv("l_psi_nonhotspot.csv")
+# number of tracts
 nrow(l_psi_hotspot)
 nrow(l_psi_nonhotspot)
 nrow(l_psi_hotspot) + nrow(l_psi_nonhotspot)
+nrow(l_psi_hotspot)/(nrow(l_psi_hotspot) + nrow(l_psi_nonhotspot))
 
+# results for geometric model
 res_null_hotspot <- read.csv("res_null_hotspot.csv")
 res_null_hotspot$type <- "hotspot"
 res_null_nonhotspot <- read.csv("res_null_nonhotspot.csv")
 res_null_nonhotspot$type <- "nonhotspot"
 
+# results for sum of geometric RVs model
 res_sum_hotspot <- read.csv("res_sum_hotspot.csv")
 res_sum_hotspot$type <- "hotspot"
 res_sum_nonhotspot <- read.csv("res_sum_nonhotspot.csv")
 res_sum_nonhotspot$type <- "nonhotspot"
 
+# results for mixture model, get row with lowest NLL
 res_mixture_hotspot <- read.csv("res_mixture_hotspot.csv") %>% arrange(NLL) 
 res_mixture_nonhotspot <- read.csv("res_mixture_nonhotspot.csv") %>% arrange(NLL)
 res_mixture_hotspot <- res_mixture_hotspot[1,]
@@ -42,6 +48,7 @@ res_df <- rbind(res_null_hotspot, res_null_nonhotspot,
 res_df$mean1 <- 1/res_df$phi1
 res_df$mean2 <- 1/res_df$phi2
 
+# change to long format
 long_est <- res_df %>%
   select(-X) %>%  # drop X column
   pivot_longer(
@@ -49,20 +56,20 @@ long_est <- res_df %>%
     names_to = "variable",
     values_to = "est")
 
+# filter to hotspot estimates using the mixture model, and obtain AIC
+# obtain difference in AIC between the mixture model and geometric model
 long_est_hotspot <- long_est %>% filter(type == "hotspot")
 long_est_hotspot %>% filter(model == "mixture" & variable == "AIC") %>% select(est) - long_est_hotspot %>% filter(model == "null" & variable == "AIC") %>% select(est)
 
+# filter to non-hotspot estimates using the mixture model, and obtain AIC
+# obtain difference in AIC between the mixture model and geometric model
 long_est_nonhotspot <- long_est %>% filter(type == "nonhotspot")
 long_est_nonhotspot %>% filter(model == "mixture" & variable == "AIC") %>% select(est) - long_est_nonhotspot %>% filter(model == "null" & variable == "AIC") %>% select(est)
-
-315042/876584
 ```
 
 ```{r}
-# 1. List all relevant bootstrap files
+# load all bootstrapped estimates
 file_list <- list.files(pattern = "^bootstrap_res_.*hotspot_seed[0-9]+.*\\.csv$", full.names = TRUE)
-
-# 2. Load and process each file
 res_list <- lapply(file_list, function(file) {
   df <- read.csv(file)
 
@@ -83,22 +90,33 @@ res_list <- lapply(file_list, function(file) {
   return(df)
 })
 
-# 3. Combine all data into one data frame
+# For each seed, model, and for hotspot tracts and non-hotspot tracts, obtain bootstrapped estimate
 res_boot <- do.call(rbind, res_list) %>%
   group_by(model, bootstrap, seed, type) %>%
   slice_min(NLL, with_ties = FALSE) %>%
   ungroup() %>%
   arrange(model, seed, bootstrap)
 
-# 4. Limit to first 500 replicates per seed/bootstrap
+# Assign a new index for each bootstrap, seed combination. This is one boostrap iteration.
 res_boot <- res_boot %>%
-  mutate(index = group_indices(., seed, bootstrap)) %>%
-  filter(index <= 500)
+  group_by(seed, bootstrap) %>%
+  mutate(index = group_indices()) %>%
+  ungroup()
 
-# 5. Compute quantiles grouped by model and type
+# There should be 42*12*3*2 = 3024 rows (looks fine)
+# Checking individual models
+res_boot_null <- res_boot %>% filter(model == "null")
+res_boot_sum <- res_boot %>% filter(model == "sum")
+res_boot_mixture <- res_boot %>% filter(model == "mixture")
+
+# limit to 500 bootstrap iterations
+res_boot <- filter(res_boot, index <= 500)
+
+# Compute quantiles grouped by model and type
 q_probs <- c(0.025, 0.975)
 vars <- c("NLL", "AIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
 
+# Get quantiles for 95% CIs
 quantiles_by_model_type <- res_boot %>%
   group_by(model, type) %>%
   group_split() %>%
@@ -118,7 +136,19 @@ quantiles_by_model_type <- res_boot %>%
     })
   })
 
-# 6. Merge with long_est if available
+# Check for NAs
+na_counts <- map_dfr(vars, function(v) {
+  tibble(
+    variable = v,
+    na_count = sum(is.na(res_boot[[v]])),
+    total = length(res_boot[[v]]),
+    percent_na = mean(is.na(res_boot[[v]])) * 100
+  )
+})
+
+# Merge with point estimates
 res_df <- inner_join(long_est, quantiles_by_model_type, by = c("model", "variable", "type"))
 ```
+
+
 
