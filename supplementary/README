@@ -1,7 +1,10 @@
-This directory contains the code and data used in the Supplementary Materials.
+This directory contains the code and data used to generate the supplementary analyses and figures included in the Supplementary Materials of the paper.
 
-The sim_tracts directory contains "sim_tracts.R", which uses the minor allele frequencies from Chromosome 1 of the UK Biobank sequence data to simulate observed tracts. We are unable to include these minor allele frequencies in this public repository. We save the simulated observed tracts in "res.geom.rds".
+sim_tracts/: Contains sim_tracts.R, which simulates observed gene conversion tracts using minor allele frequencies from Chromosome 1 of the UK Biobank sequence data.
 
-The l_psi directory contains "calculate_l_psi_sim.py", which is used to calculate the observed tract lengths and estimated allele conversion probabilities from the coalescent simulation. We save these values in "l_psi_sim.csv".
+Note: Due to data access restrictions, the minor allele frequencies used for this simulation are not included in the public repository.
+The resulting simulated tracts are saved in res.geom.rds.
 
-"analysis.Rmd" is used to compare the observed tract lengths from these two simulations with the CDF of our model. It is used to create the related supplementary figures.
+l_psi/: Contains calculate_l_psi_sim.py, which computes the observed tract lengths and the estimated allele conversion probabilities (l_psi) from the coalescent simulation. The output is saved in l_psi_sim.csv.
+
+analysis.Rmd: An R Markdown file used to compare the observed tract length distributions from both simulations with the cumulative distribution function (CDF) of the model. This script generates the supplementary figures related to these comparisons.
