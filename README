@@ -1,0 +1,9 @@
+This repository includes the code and data used for the study, "Modeling the length distribution of gene conversion tracts in humans from the UK Biobank sequence data."
+
+Each file contains code and data for a different section of the paper.
+
+The UK_Biobank/ directory contains the genomic positions of 5,961,128 detected gene conversion tracts from the UK Biobank whole-autosome sequence data, along with the code used to perform the UK Biobank analysis. The hotspot/ directory contains the code for the analysis stratifying detected gene conversion tracts by whether they overlapped a crossover hotspot.
+
+The simulation/ directory contains the simulated data and code used in the coalescent simulation study. The robustness_sim/ directory contains the simulated data and code in the simulation study used to assess the robustness of the method.
+
+The supplementary/ directory contains the code used for the remaining supplementary information files on how linkage disequilibrium affects the length distribution of observed gene conversion tracts.
