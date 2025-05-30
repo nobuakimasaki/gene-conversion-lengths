@@ -1,9 +1,14 @@
-This repository includes the code and data used for the study, "Modeling the length distribution of gene conversion tracts in humans from the UK Biobank sequence data."
+This repository contains the code and data associated with the study:
+“Modeling the length distribution of gene conversion tracts in humans from the UK Biobank sequence data.”
 
-Each file contains code and data for a different section of the paper.
+Each directory corresponds to a distinct section of the paper and contains the relevant data and code used in the analysis.
 
-The UK_Biobank/ directory contains the genomic positions of 5,961,128 detected gene conversion tracts from the UK Biobank whole-autosome sequence data, along with the code used to perform the UK Biobank analysis. The hotspot/ directory contains the code for the analysis stratifying detected gene conversion tracts by whether they overlapped a crossover hotspot.
+UK_Biobank/: Contains the genomic positions of 5,961,128 detected gene conversion tracts from the UK Biobank whole-autosome sequence data, along with the code used to perform the UK Biobank analysis.
 
-The simulation/ directory contains the simulated data and code used in the coalescent simulation study. The robustness_sim/ directory contains the simulated data and code in the simulation study used to assess the robustness of the method.
+hotspot/: Contains the code used for the stratified analysis of detected gene conversion tracts based on their overlap with crossover hotspots.
 
-The supplementary/ directory contains the code used for the remaining supplementary information files on how linkage disequilibrium affects the length distribution of observed gene conversion tracts.
+simulation/: Contains the simulated data and code for the coalescent simulation study used to evaluate the performance of the modeling framework.
+
+robustness_sim/: Contains the simulated data and code for the robustness study, assessing how well the method performs under model misspecification.
+
+supplementary/: Contains the code used to generate the supplementary results on how linkage disequilibrium affects the distribution of observed gene conversion tract lengths.
