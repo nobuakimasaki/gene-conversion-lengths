@@ -1,4 +1,4 @@
-This directory contains the data and code used in the analysis of detected gene conversion tracts from the UK Biobank whole-genome sequence data.
+This directory contains the data and code used in the analysis of detected gene conversion tracts from the UK Biobank whole-autosome sequence data.
 
 data/: Contains the full set of 5,961,128 detected gene conversion tracts from the UK Biobank sequence data.
 
