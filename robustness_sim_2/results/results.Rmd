@@ -1,0 +1,247 @@
+---
+title: "results"
+output: html_document
+date: "2025-05-07"
+---
+
+---
+title: "results"
+output: html_document
+date: "2025-05-07"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(stringr)
+
+# Get all CSV file names in the directory
+files <- list.files(pattern = "^fit.*\\.csv$", full.names = TRUE)
+
+# Read and row-bind all CSV files
+results <- do.call(rbind, lapply(files, read.csv)) %>% 
+  group_by(distribution, model, iteration) %>%
+  slice_min(AIC, with_ties = FALSE)
+
+# analyzing bootstrap
+
+# # Get all CSV file paths from the "bootstrap" subdirectory
+# files <- list.files("bootstrap", pattern = "\\.csv$", full.names = TRUE)
+# 
+# # Read and combine all CSV files
+# boot_res <- do.call(rbind, lapply(files, read.csv))
+# 
+# boot_res <- boot_res %>% 
+#   group_by(distribution, model, iteration, bootstrap_iter) %>%
+#   slice_min(AIC, with_ties = FALSE)
+# 
+# write.csv(boot_res, "combined_boot_res.csv")
+
+boot_res <- read.csv("combined_boot_res.csv")
+
+# Define the columns you want bootstrap intervals for
+cols <- c("w1", "NLL", "AIC", "mean", "phi1", "phi2")
+
+# Compute 2.5% and 97.5% quantiles for each column within each group
+boot_percentiles <- boot_res %>%
+  group_by(model, distribution, iteration) %>%
+  summarise(across(all_of(cols), 
+                   list(lower = ~quantile(.x, 0.025, na.rm = TRUE),
+                        upper = ~quantile(.x, 0.975, na.rm = TRUE)),
+                  .names = "{.col}_{.fn}"),
+            .groups = "drop")
+
+boot_percentiles <- boot_percentiles %>%
+  mutate(mean_covers_100 = (mean_lower <= 100 & mean_upper >= 100))
+
+combined <- left_join(results, boot_percentiles, by = c("model", "distribution", "iteration"))
+
+AIC_selected <- combined %>%
+  group_by(distribution, iteration) %>%
+  slice_min(AIC, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(model = "AIC-selected")
+
+combined_augmented <- bind_rows(combined, AIC_selected)
+```
+
+```{r}
+# explore bias & empirical standard deviation & coverage
+summary_table <- combined_augmented %>%
+  group_by(distribution, model) %>%
+  summarise(
+    bias = mean(mean) - 100,
+    sd_est = sd(mean),
+    coverage_rate = mean(mean_covers_100),  
+    .groups = "drop"
+  ) %>%
+  mutate(
+    model = recode(model,
+                   "null" = "Geom",
+                   "sum" = "Geom2",
+                   "mixture" = "Mixture"),
+    distribution = str_to_title(distribution)  # Capitalize e.g., "geom" -> "Geom"
+  )
+
+colnames(summary_table) <- c("Distribution", "Model", "Bias", "Emp. SD", "Coverage")
+
+summary_table <- summary_table %>%
+  mutate(
+    Bias = as.numeric(formatC(Bias, format = "f", digits = 1)),
+    `Emp. SD` = as.numeric(formatC(`Emp. SD`, format = "f", digits = 1)),
+    Coverage = as.numeric(formatC(Coverage, format = "f", digits = 2))
+  )
+```
+
+```{r}
+library(flextable)
+library(officer)
+
+# Create flextable
+ft <- flextable(summary_table)
+
+# Create flextable and apply formatting
+ft <- flextable(summary_table) %>%
+  colformat_num(j = "Bias", digits = 1) %>%
+  colformat_num(j = "Emp. SD", digits = 1) %>%
+  colformat_num(j = "Coverage", digits = 2) %>%
+  autofit()
+
+# Save as Word doc and open it
+doc <- read_docx() %>%
+  body_add_flextable(value = ft)
+
+print(doc, target = "table_output.docx")
+```
+
+```{r}
+sim_geom <- read.csv("../sim_tracts/sim_tracts_vcf_geom_multiple_iterations.csv")
+```
+
+```{r}
+# Step 1: Identify the set of all models and distributions
+all_models <- unique(results$model)
+all_distributions <- unique(results$distribution)
+
+# Step 2: Get model with smallest AIC per (distribution, iteration)
+selected_models <- results %>%
+  group_by(distribution, iteration) %>%
+  slice_min(order_by = AIC, with_ties = FALSE) %>%
+  ungroup()
+
+# Step 3: Count selections
+model_selection_counts <- selected_models %>%
+  count(distribution, model, name = "count")
+
+# Step 4: Ensure all combinations are represented, fill in 0s
+model_selection_counts_full <- model_selection_counts %>%
+  complete(distribution = all_distributions, model = all_models, fill = list(count = 0))
+
+# View result
+model_selection_counts_full
+
+model_selection_counts_formatted <- model_selection_counts_full %>%
+  mutate(
+    Distribution = str_to_title(distribution),
+    `Setting of N` = case_when(
+      model == "mixture" ~ "Mixture",
+      model == "null" ~ "Geom",
+      model == "sum" ~ "Geom2",
+      TRUE ~ str_to_title(model)  # fallback for any others
+    )
+  ) %>%
+  select(
+    Distribution,
+    `Setting of N`,
+    `Times Selected by AIC` = count
+  )
+
+# View result
+model_selection_counts_formatted
+
+# Create flextable and apply formatting
+ft2 <- flextable(model_selection_counts_formatted) %>%
+  autofit()
+
+# Save as Word document
+doc2 <- read_docx() %>%
+  body_add_flextable(value = ft2)
+
+print(doc2, target = "table_output2.docx")
+```
+
+```{r}
+# Supplementary Figure
+
+# Define PMF functions
+calc_pmf_geom <- function(n, phi) {(1 - phi)^(n - 1) * phi}
+calc_pmf_geom2 <- function(n, phi) {(n - 1) * (1 - phi)^(n - 2) * phi^2}
+calc_pmf_geom3 <- function(n, phi) {choose(n - 1, 2) * (1 - phi)^(n - 3) * phi^3}
+
+# Define support
+x <- 1:1500
+
+# Compute PMFs
+pmf_geom     <- sapply(x, calc_pmf_geom, phi = 1 / 300)
+pmf_geom2    <- sapply(x, calc_pmf_geom2, phi = 1 / 150)
+pmf_geom3    <- sapply(x, calc_pmf_geom3, phi = 1 / 100)
+pmf_uniform  <- ifelse(x >= 1 & x <= 599, 1 / 599, 0)
+
+# Mixture parameters
+weight1 <- 0.05
+mean1 <- 700
+mean2 <- (100 - weight1 * mean1) / (1 - weight1)  # = 1300 / 19
+phi1 <- 1 / mean1
+phi2 <- 1 / mean2
+
+# Compute mixture using calc_pmf_geom
+pmf_mix1 <- sapply(x, calc_pmf_geom, phi = phi1)
+pmf_mix2 <- sapply(x, calc_pmf_geom, phi = phi2)
+pmf_mixture <- weight1 * pmf_mix1 + (1 - weight1) * pmf_mix2
+
+# Combine into one data frame
+data <- data.frame(
+  x = x,
+  Geometric = pmf_geom,
+  Sum2Geometric = pmf_geom2,
+  Sum3Geometric = pmf_geom3,
+  Uniform = pmf_uniform,
+  Mixture = pmf_mixture
+)
+
+# Reshape for ggplot
+data_long <- tidyr::pivot_longer(
+  data,
+  cols = -x,
+  names_to = "Distribution",
+  values_to = "Probability"
+)
+
+# Color palette
+color_palette <- c(
+  "Geometric" = "#56B4E9",
+  "Sum2Geometric" = "#F0E442",
+  "Sum3Geometric" = "#E69F00",
+  "Uniform" = "#009E73",
+  "Mixture" = "#CC79A7"
+)
+
+# Plot
+ggplot(data_long, aes(x = x, y = log(Probability), color = Distribution)) +
+  geom_line(size = 1) +
+  scale_color_manual(
+    values = color_palette,
+    breaks = c("Geometric", "Sum2Geometric", "Sum3Geometric", "Uniform", "Mixture"),
+    labels = c("Geometric", "Sum of two geometric", "Sum of three geometric", "Uniform", "Mixture")
+  ) +
+  scale_x_continuous(
+    limits = c(1, 1500),
+    breaks = c(1, seq(250, 1500, by = 250))
+  ) +
+  labs(x = "Tract length (bp)", y = "log(P(N = n))") +
+  theme_bw() +
+  theme(legend.title = element_blank())
+
+# Save plot
+ggsave("figs/pmf.png", width = 7, height = 5)
+```
+

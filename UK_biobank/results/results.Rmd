@@ -140,4 +140,107 @@ n1500/n
 n_est <- sum(all_data$l != 1 & all_data$l <= 1500)
 n_est
 ```
+```{r}
+library(tidyverse)
+source("fns_sim.R")
+
+# Inputs:
+# L      : integer vector of observed tract lengths (>= 2)
+# psi_i  : same-length vector of psi for each tract
+# params : list(w1=..., phi1=..., phi2=..., M=...)
+# your functions: pL_geom_2(), pL_geom_2_to_M(), pL_geom_2M_mixture()
+
+L <- l_psi$l
+psi_i <- l_psi$psi
+params <- list(w1=res_mixture$w1, 
+               phi1=res_mixture$phi1, 
+               phi2=res_mixture$phi2, 
+               M=1500)
+
+l_vals <- 2:max(L)
+
+# Compute expected pmf by averaging over psi_i
+# (Loop or vectorize; here: loop with vapply for clarity)
+mod_p <- numeric(length(l_vals))
+for (k in seq_along(l_vals)) {
+  ell <- l_vals[k]
+  mod_p[k] <- mean(pL_geom_2M_mixture(ell, psi_i, params$w1,
+                                      params$phi1, params$phi2, params$M))
+}
+
+# Empirical pmf
+emp_cnt <- tabulate(factor(L, levels = l_vals), nbins = length(l_vals))
+emp_p   <- emp_cnt / sum(emp_cnt)
+
+df <- tibble(
+  l = l_vals,
+  emp_cnt = emp_cnt,
+  emp_p   = emp_p,
+  mod_p   = mod_p,
+  exp_cnt = sum(emp_cnt) * mod_p
+)
+
+# 1) PMF overlay
+ggplot(df, aes(l)) +
+  geom_col(aes(y = emp_p), width = 1, fill = "grey80") +
+  geom_line(aes(y = mod_p), colour = "red") +
+  scale_y_continuous(trans = "log10") +  # log scale helps tails; drop if not needed
+  labs(x = "Tract length L", y = "Probability",
+       title = "Empirical vs model PMF") +
+  theme_bw()
+
+# # 2) Rootogram
+# df <- df %>% mutate(root_resid = sqrt(emp_cnt) - sqrt(exp_cnt))
+# ggplot(df, aes(l, root_resid)) +
+#   geom_col(width = 1, fill = "steelblue") +
+#   geom_hline(yintercept = 0, colour = "red") +
+#   labs(x = "L", y = "√obs − √exp", title = "Hanging rootogram") +
+#   theme_bw()
+
+```
+```{r}
+# ---- Inputs ----------------------------------------------------------
+M      <- 1500                  
+
+# ---- Helper: average PMF over psi_i ---------------------------------
+avg_pmf <- function(l_vals, psi_i, FUN, ...) {
+  vapply(l_vals, function(ell) mean(FUN(ell, psi_i, ...)), numeric(1))
+}
+
+l_vals <- 2:M
+
+# Geometric model
+pmf_geom   <- avg_pmf(l_vals, psi_i, pL_geom_2M,       phi = 1/res_null$mean, M = M)      # pick phi1 (or your geom phi)
+
+# Sum-of-two-geoms model (your alt)
+pmf_2geom  <- avg_pmf(l_vals, psi_i, pL_geom_2M_alt,   phi = 1/res_sum$mean, M = M)      # again, set phi as appropriate
+
+# Mixture model
+pmf_mix    <- avg_pmf(l_vals, psi_i, pL_geom_2M_mixture,
+                      w1 = res_mixture$w1, phi1 = res_mixture$phi1, phi2 = res_mixture$phi2, M = M)
+
+# Empirical PMF
+emp_cnt <- tabulate(factor(L, levels = l_vals), nbins = length(l_vals))
+emp_p   <- emp_cnt / sum(emp_cnt)
+
+# ---- Tidy + plot -----------------------------------------------------
+df <- tibble(l = l_vals,
+             Empirical = emp_p,
+             Geometric = pmf_geom,
+             TwoGeom   = pmf_2geom,
+             Mixture   = pmf_mix) %>%
+  pivot_longer(-l, names_to = "series", values_to = "p")
+
+ggplot(df, aes(l)) +
+  geom_col(data = filter(df, series == "Empirical"),
+           aes(y = p), fill = "grey80", width = 1, alpha = 0.8) +
+  geom_line(data = filter(df, series != "Empirical"),
+            aes(y = p, colour = series), linewidth = 0.8) +
+  labs(x = "Tract length L", y = "Probability",
+       title = "Empirical PMF vs model fits") +
+  scale_y_continuous(trans = "log10") +   # remove if you prefer linear
+  theme_bw() +
+  theme(legend.position = "top")
+
+```
 
