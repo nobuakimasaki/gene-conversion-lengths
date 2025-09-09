@@ -81,6 +81,11 @@ pL_geom_2_to_M <- function(l, psi, phi, M) {
   return(psi^2*((1-phi)-(1-phi)^M)/(C^2))
 }
 
+pL_geom_2_to_infty <- function(l, psi, phi) {
+  C <- phi+psi-phi*psi
+  return(psi^2*((1-phi))/(C^2))
+}
+
 pL_geom_2M_alt <- function(l, psi, phi, M) {
   return(pL_geom_2(l, psi, phi)/pL_geom_2_to_M(l, psi, phi, M))
 }
@@ -89,6 +94,13 @@ pL_geom_2M_mixture <- function(l, psi, w1, phi1, phi2, M) {
   w2 <- 1 - w1
   num <- w1*pL_geom_2(l, psi, phi1) + w2*pL_geom_2(l, psi, phi2)
   denom <- w1*pL_geom_2_to_M(l, psi, phi1, M) + w2*pL_geom_2_to_M(l, psi, phi2, M)
+  return(num/denom)
+}
+
+pL_geom_2_mixture <- function(l, psi, w1, phi1, phi2) {
+  w2 <- 1 - w1
+  num <- w1*pL_geom_2(l, psi, phi1) + w2*pL_geom_2(l, psi, phi2)
+  denom <- w1*pL_geom_2_to_infty(l, psi, phi1) + w2*pL_geom_2_to_infty(l, psi, phi2)
   return(num/denom)
 }
 

@@ -28,8 +28,8 @@ import model
 
 # Function to read MAF file from one region
 def read_MAF(seed):
-    path = f"/projects/browning/brwnlab/sharon/for_nobu/gc_length/sim5_data/sim5_seed{seed}_10Mb_n125000.gtstats"
-    #path = f"data/sim5_seed{seed}_10Mb_n125000.gtstats"
+    # path = f"/projects/browning/brwnlab/sharon/for_nobu/gc_length/sim5_data/sim5_seed{seed}_10Mb_n125000.gtstats"
+    path = f"sim5_seed{seed}_10Mb_n125000.gtstats"
     df = pd.read_table(path, header=None, index_col=False)
     return df
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # 1.  Load all files
     # ------------------------------------------------------------------
-    files   = glob.glob("sim_tracts_vcf_*_multiple_iterations.csv")
+    files   = glob.glob("sim_tracts_vcf_*_verbose.csv")
     df_all  = pd.concat((pd.read_csv(f) for f in files), ignore_index=True)
 
     df_all  = df_all[df_all["distribution"] == DIST_TARGET]
@@ -106,19 +106,21 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # 2.  Filter out length == 1   OR   length > 1 500
     # ------------------------------------------------------------------
-    df_filt = df_all[(df_all["length"] != 1) & (df_all["length"] <= 1_500)]
+    df_filt = df_all[(df_all["length"] > 1) & (df_all["length"] <= 1_500)]
 
     # ------------------------------------------------------------------
     # Down-sample every group to exactly 200 rows (no replacement needed)
     # ------------------------------------------------------------------
-    TARGET  = 200      # rows to keep per (distribution, iteration) group
-    RSTATE  = 27       # random-state seed for reproducibility
-    df_down = (
-        df_filt
-        .groupby(["distribution", "iteration"], group_keys=False)
-        .sample(n=TARGET, random_state=RSTATE)    
-        .reset_index(drop=True)
-    )
+    # TARGET  = 200      # rows to keep per (distribution, iteration) group
+    # RSTATE  = 27       # random-state seed for reproducibility
+    # df_down = (
+    #     df_filt
+    #     .groupby(["distribution", "iteration"], group_keys=False)
+    #     .sample(n=TARGET, random_state=RSTATE)    
+    #     .reset_index(drop=True)
+    # )
+
+    df_down = df_filt
 
     print(df_down.shape)      # (#groups × 200, original_n_columns)
 
@@ -143,7 +145,7 @@ if __name__ == "__main__":
             POINT_RESULTS.append(out)
 
         # -------- bootstraps (parallel) --------
-        base_seed = hash((dist, it)) & 0xFFFFFFFF
+        base_seed = int.from_bytes(f"{dist}_{it}".encode(), "little") % (2**32)
 
         tasks = [
             (psi_lst, l_lst, M, base_seed + b, b)

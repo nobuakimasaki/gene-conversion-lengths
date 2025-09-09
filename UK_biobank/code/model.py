@@ -113,6 +113,7 @@ def fit_model_M(psi_lst_filt, l_lst_filt, M):
     np.arange(0.05, 0.51, 0.05)])
 
     results = []
+    n_obs = len(l_lst_filt)
 
     # Fit mixture model for each w1
     for w1 in w1_grid:
@@ -121,10 +122,11 @@ def fit_model_M(psi_lst_filt, l_lst_filt, M):
         mean_val = w1 / phi1 + (1 - w1) / phi2
         nll = result.fun
         aic = 2 * nll + 6  # 3 parameters (phi1, phi2, w1)
-        results.append(("mixture", w1, nll, aic, [phi1, phi2], mean_val))
+        bic = 2 * nll + 3 * np.log(n_obs)
+        results.append(("mixture", w1, nll, aic, bic, [phi1, phi2], mean_val))
 
     # Create DataFrame
-    results_df = pd.DataFrame(results, columns=["model", "w1", "NLL", "AIC", "phi", "mean"])
+    results_df = pd.DataFrame(results, columns=["model", "w1", "NLL", "AIC", "BIC", "phi", "mean"])
     results_df[["phi1", "phi2"]] = pd.DataFrame(results_df["phi"].tolist(), index=results_df.index)
     results_df = results_df.drop(columns=["phi"]).sort_values(by="NLL")
 
@@ -141,11 +143,13 @@ def fit_model_M(psi_lst_filt, l_lst_filt, M):
     nll_null = res_null.fun
     mean_null = 1 / phi_null
     aic_null = 2 * nll_null + 2  # 1 parameter
+    bic_null = 2 * nll_null + 1 * np.log(n_obs)
     null_row = pd.DataFrame([{
         "model": "null",
         "w1": np.nan,
         "NLL": nll_null,
         "AIC": aic_null,
+        "BIC": bic_null,
         "mean": mean_null,
         "phi1": phi_null,
         "phi2": np.nan
@@ -156,11 +160,13 @@ def fit_model_M(psi_lst_filt, l_lst_filt, M):
     nll_sum = res_sum.fun
     mean_sum = 2 / phi_sum
     aic_sum = 2 * nll_sum + 2  # 1 parameter
+    bic_sum = 2 * nll_sum + 1 * np.log(n_obs)
     sum_row = pd.DataFrame([{
         "model": "sum",
         "w1": np.nan,
         "NLL": nll_sum,
         "AIC": aic_sum,
+        "BIC": bic_sum,
         "mean": mean_sum,
         "phi1": phi_sum,
         "phi2": np.nan
