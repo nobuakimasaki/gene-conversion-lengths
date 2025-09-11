@@ -93,9 +93,7 @@ def bootstrap_once(args):
 
 if __name__ == "__main__":
 
-    # ------------------------------------------------------------------
-    # 1.  Load all files
-    # ------------------------------------------------------------------
+    # Load all files
     files   = glob.glob("sim_tracts_vcf_*_verbose.csv")
     df_all  = pd.concat((pd.read_csv(f) for f in files), ignore_index=True)
 
@@ -103,28 +101,14 @@ if __name__ == "__main__":
     if df_all.empty:
         raise ValueError(f"No rows found for distribution '{DIST_TARGET}'.")
 
-    # ------------------------------------------------------------------
-    # 2.  Filter out length == 1   OR   length > 1 500
-    # ------------------------------------------------------------------
-    df_filt = df_all[(df_all["length"] > 1) & (df_all["length"] <= 1_500)]
+    M = 1500
 
-    # ------------------------------------------------------------------
-    # Down-sample every group to exactly 200 rows (no replacement needed)
-    # ------------------------------------------------------------------
-    # TARGET  = 200      # rows to keep per (distribution, iteration) group
-    # RSTATE  = 27       # random-state seed for reproducibility
-    # df_down = (
-    #     df_filt
-    #     .groupby(["distribution", "iteration"], group_keys=False)
-    #     .sample(n=TARGET, random_state=RSTATE)    
-    #     .reset_index(drop=True)
-    # )
-
+    # Filter out length == 1   OR   length > 1500
+    df_filt = df_all[(df_all["length"] > 1) & (df_all["length"] <= M)]
     df_down = df_filt
 
     print(df_down.shape)      # (#groups × 200, original_n_columns)
 
-    M        = 1500
     maf_df   = read_MAF(1)
     N_BOOT   = 500
     N_CORES  = max(1, cpu_count() - 1)
@@ -132,7 +116,7 @@ if __name__ == "__main__":
     POINT_RESULTS, BOOT_RESULTS = [], []
 
     for (dist, it), g in df_down.groupby(["distribution", "iteration"]):
-        print(f"▶  Processing dist='{dist}', iter={it}")   # progress ping
+        print(f"Processing dist='{dist}', iter={it}")   # progress ping
 
         # -------- point estimates --------
         l_lst, psi_lst = get_l_psi(maf_df, g, M, 5000, 0.5)

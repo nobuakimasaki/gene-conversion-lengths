@@ -25,22 +25,31 @@ nrow(l_psi_hotspot)/(nrow(l_psi_hotspot) + nrow(l_psi_nonhotspot))
 # results for geometric model
 res_null_hotspot <- read.csv("res_null_hotspot.csv")
 res_null_hotspot$type <- "hotspot"
+res_null_hotspot$BIC <- res_null_hotspot$AIC - 2 + log(nrow(l_psi_hotspot))
+
 res_null_nonhotspot <- read.csv("res_null_nonhotspot.csv")
 res_null_nonhotspot$type <- "nonhotspot"
+res_null_nonhotspot$BIC <- res_null_nonhotspot$AIC - 2 + log(nrow(l_psi_nonhotspot))
 
 # results for sum of geometric RVs model
 res_sum_hotspot <- read.csv("res_sum_hotspot.csv")
 res_sum_hotspot$type <- "hotspot"
+res_sum_hotspot$BIC <- res_sum_hotspot$AIC - 2 + log(nrow(l_psi_hotspot))
+
 res_sum_nonhotspot <- read.csv("res_sum_nonhotspot.csv")
 res_sum_nonhotspot$type <- "nonhotspot"
+res_sum_nonhotspot$BIC <- res_sum_nonhotspot$AIC - 2 + log(nrow(l_psi_nonhotspot))
 
 # results for mixture model, get row with lowest NLL
 res_mixture_hotspot <- read.csv("res_mixture_hotspot.csv") %>% arrange(NLL) 
 res_mixture_nonhotspot <- read.csv("res_mixture_nonhotspot.csv") %>% arrange(NLL)
 res_mixture_hotspot <- res_mixture_hotspot[1,]
 res_mixture_hotspot$type <- "hotspot"
+res_mixture_hotspot$BIC <- res_mixture_hotspot$AIC - 2*3 + 3*log(nrow(l_psi_hotspot))
+
 res_mixture_nonhotspot <- res_mixture_nonhotspot[1,]
 res_mixture_nonhotspot$type <- "nonhotspot"
+res_mixture_nonhotspot$BIC <- res_mixture_nonhotspot$AIC - 2*3 + 3*log(nrow(l_psi_nonhotspot))
 
 res_df <- rbind(res_null_hotspot, res_null_nonhotspot, 
                 res_sum_hotspot, res_sum_nonhotspot,
@@ -52,19 +61,19 @@ res_df$mean2 <- 1/res_df$phi2
 long_est <- res_df %>%
   select(-X) %>%  # drop X column
   pivot_longer(
-    cols = c(NLL, AIC, mean, w1, phi1, phi2, mean1, mean2),
+    cols = c(NLL, AIC, BIC, mean, w1, phi1, phi2, mean1, mean2),
     names_to = "variable",
     values_to = "est")
 
 # filter to hotspot estimates using the mixture model, and obtain AIC
-# obtain difference in AIC between the mixture model and geometric model
+# obtain difference in BIC between the mixture model and geometric model
 long_est_hotspot <- long_est %>% filter(type == "hotspot")
-long_est_hotspot %>% filter(model == "mixture" & variable == "AIC") %>% select(est) - long_est_hotspot %>% filter(model == "null" & variable == "AIC") %>% select(est)
+long_est_hotspot %>% filter(model == "mixture" & variable == "BIC") %>% select(est) - long_est_hotspot %>% filter(model == "null" & variable == "BIC") %>% select(est)
 
 # filter to non-hotspot estimates using the mixture model, and obtain AIC
-# obtain difference in AIC between the mixture model and geometric model
+# obtain difference in BIC between the mixture model and geometric model
 long_est_nonhotspot <- long_est %>% filter(type == "nonhotspot")
-long_est_nonhotspot %>% filter(model == "mixture" & variable == "AIC") %>% select(est) - long_est_nonhotspot %>% filter(model == "null" & variable == "AIC") %>% select(est)
+long_est_nonhotspot %>% filter(model == "mixture" & variable == "BIC") %>% select(est) - long_est_nonhotspot %>% filter(model == "null" & variable == "BIC") %>% select(est)
 ```
 
 ```{r}
@@ -114,7 +123,7 @@ res_boot <- filter(res_boot, index <= 500)
 
 # Compute quantiles grouped by model and type
 q_probs <- c(0.025, 0.975)
-vars <- c("NLL", "AIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
+vars <- c("NLL", "AIC", "BIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
 
 # Get quantiles for 95% CIs
 quantiles_by_model_type <- res_boot %>%
