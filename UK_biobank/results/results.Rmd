@@ -135,14 +135,17 @@ quantiles_by_model <- res_boot %>%
 
 res_df <- inner_join(long_est, quantiles_by_model) %>% select(M, model, variable, est, q2.5, q97.5)
 
-res_BIC <- res_df %>% filter(variable == "BIC")
+res_BIC <- res_df %>% filter(variable == "BIC", M == "1500")
+
+res_df_1500 <- res_df %>% filter(M == "1500")
 ```
 
 ```{r}
 mixture_plot_df <- res_df %>% filter(model == "mixture")
+mixture_plot_df <- mixture_plot_df %>% mutate(variable = recode(variable, mean = "Overall mean", mean1 = "Mean 1", mean2 = "Mean 2", w1 = "First component weight"))
 
 # Plot in main paper
-ggplot(mixture_plot_df %>% filter(variable %in% c("mean", "mean1", "mean2", "w1"), M == 1500), aes(x = model, y = est)) +
+ggplot(mixture_plot_df %>% filter(variable %in% c("Overall mean", "Mean 1", "Mean 2", "First component weight"), M == 1500), aes(x = model, y = est)) +
   geom_point() +
   geom_errorbar(aes(ymin = q2.5, ymax = q97.5), width = 0.2) +
   facet_wrap(vars(variable), scales = "free_y") + 
@@ -150,7 +153,26 @@ ggplot(mixture_plot_df %>% filter(variable %in% c("mean", "mean1", "mean2", "w1"
   labs(y = "Estimate (with 95% CI)", x = "Model")
 
 # Could go in Appendix
-ggplot(mixture_plot_df %>% filter(variable %in% c("mean", "mean1", "mean2", "w1")), aes(x = M, y = est)) +
+ggplot(mixture_plot_df %>% filter(variable %in% c("Overall mean", "Mean 1", "Mean 2", "First component weight")), aes(x = M, y = est)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = q2.5, ymax = q97.5), width = 0.2) +
+  facet_wrap(vars(variable), scales = "free_y") + 
+  theme_bw() +
+  labs(y = "Estimate (with 95% CI)", x = "Truncation value")
+ggsave("sens_analysis.png", width = 8, height = 5)
+
+geom_plot_df <- res_df %>% filter(model == "null")
+
+ggplot(geom_plot_df %>% filter(variable == "mean"), aes(x = M, y = est)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = q2.5, ymax = q97.5), width = 0.2) +
+  facet_wrap(vars(variable), scales = "free_y") + 
+  theme_bw() +
+  labs(y = "Estimate (with 95% CI)", x = "Model")
+
+geom2_plot_df <- res_df %>% filter(model == "sum")
+
+ggplot(geom2_plot_df %>% filter(variable == "mean"), aes(x = M, y = est)) +
   geom_point() +
   geom_errorbar(aes(ymin = q2.5, ymax = q97.5), width = 0.2) +
   facet_wrap(vars(variable), scales = "free_y") + 
@@ -180,7 +202,10 @@ n1500
 n1500/n
 
 n_est <- sum(all_data$l != 1 & all_data$l <= 1500)
-n_est
+n_est # Same as length of l_psi_M1500
+
+n_est_2000 <- sum(all_data$l != 1 & all_data$l <= 2000)
+n_est_2000
 ```
 
 ```{r}
