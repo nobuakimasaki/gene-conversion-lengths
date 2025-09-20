@@ -18,10 +18,17 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--dist",
     required=True,
+    help="Mean parameter used to pick the input file (e.g., 21.0 → sim_tracts_vcf_<dist>_m21.0_verbose.csv)",
+)
+parser.add_argument(
+    "--mean",
+    type=float,
+    required=True,
     help="Name of the distribution to process (e.g. 'geom', 'geom2', ...)",
 )
 args = parser.parse_args()
 DIST_TARGET = args.dist
+MEAN_TARGET = args.mean
 
 #sys.path.append(os.path.abspath("../UK_biobank"))
 import model
@@ -93,19 +100,45 @@ def bootstrap_once(args):
 
 if __name__ == "__main__":
 
-    # Load all files
-    files   = glob.glob("sim_tracts_vcf_*_verbose.csv")
-    df_all  = pd.concat((pd.read_csv(f) for f in files), ignore_index=True)
+    # Decide target per group from MEAN_TARGET (robust to "21.0" vs 21)
+    mean_val = float(MEAN_TARGET)
+    m = int(round(mean_val))
+    n_per_group = {21: 50, 100: 1000}.get(m, None)
 
-    df_all  = df_all[df_all["distribution"] == DIST_TARGET]
-    if df_all.empty:
-        raise ValueError(f"No rows found for distribution '{DIST_TARGET}'.")
+    # # Load all files
+    # files   = glob.glob("sim_tracts_vcf_*_verbose.csv")
+    # df_all  = pd.concat((pd.read_csv(f) for f in files), ignore_index=True)
+
+    # df_all  = df_all[df_all["distribution"] == DIST_TARGET]
+    # if df_all.empty:
+    #     raise ValueError(f"No rows found for distribution '{DIST_TARGET}'.")
+
+    mean_str = f"{MEAN_TARGET:.1f}"  # ensures '21.0' not '21'
+    pattern = f"../sim_tracts/sim_tracts_vcf_{DIST_TARGET}_m{mean_str}*_verbose.csv"
+
+    matches = glob.glob(pattern)
+    if not matches:
+        raise FileNotFoundError(f"No files match {pattern}")
+
+    # If multiple, pick the newest; or assert exactly one.
+    fname = max(matches, key=os.path.getmtime)  # or: matches[0]
+
+    df_all = pd.read_csv(fname)
+
+    print("Using file:", fname)
 
     M = 1500
 
     # Filter out length == 1   OR   length > 1500
     df_filt = df_all[(df_all["length"] > 1) & (df_all["length"] <= M)]
-    df_down = df_filt
+
+    # sample up to N per group (no replacement). If a group has <N rows, take all.
+    df_down = (
+        df_filt
+        .groupby(["distribution", "iteration"], group_keys=False)
+        .apply(lambda g: g.sample(n=min(n_per_group, len(g)), replace=False, random_state=0))
+        .reset_index(drop=True)
+    )
 
     print(df_down.shape)      # (#groups × 200, original_n_columns)
 
@@ -148,5 +181,5 @@ if __name__ == "__main__":
     print("Point-estimate DF :", results_all.shape)
     print("Bootstrap DF      :", boot_all.shape)
 
-    results_all.to_csv(f"fit_model_{DIST_TARGET}_point.csv",     index=False)
-    boot_all   .to_csv(f"fit_model_{DIST_TARGET}_bootstrap.csv", index=False)
+    results_all.to_csv(f"fit_model_{DIST_TARGET}_{MEAN_TARGET}_point.csv",     index=False)
+    boot_all   .to_csv(f"fit_model_{DIST_TARGET}_{MEAN_TARGET}_bootstrap.csv", index=False)

@@ -11,6 +11,27 @@ library(tidyr)
 library(purrr)
 library(tibble)
 library(patchwork)
+library(data.table)
+library(stringr)
+
+# load in data first
+# find files like: sim5_seedX_10Mb...inf_obs_tracts (optionally with trailing digits/ext)
+tract_files <- list.files(
+  "../data",
+  pattern = "^sim5_seed\\d+_10Mb.*inf_obs_tracts\\d*",
+  full.names = TRUE
+)
+
+# read & stack; add `seed` column parsed from filename
+all_tracts <- rbindlist(lapply(tract_files, function(f) {
+  dt <- fread(f, header = FALSE)           # set header=TRUE if your files have headers
+  seed_num <- as.integer(str_match(basename(f), "sim5_seed(\\d+)_10Mb")[, 2])
+  dt[, seed := seed_num]
+}), use.names = FALSE, fill = TRUE)
+
+all_tracts$l <- all_tracts$V2 - all_tracts$V1 + 1
+all_tracts_2_1500 <- all_tracts %>% filter(l > 1 & l <= 1500)
+all_tracts_2_1500_counts <- all_tracts_2_1500 %>% group_by(seed) %>% summarize(n = n())
 
 # Load main results files
 file_list <- list.files(pattern = "^res.*seed[0-9]+.*\\.csv$", full.names = TRUE)
@@ -24,6 +45,8 @@ res_df <- lapply(file_list, function(file) {
 }) %>%
   bind_rows()
 
+res_df <- res_df %>% inner_join(all_tracts_2_1500_counts)
+
 # Split by model
 
 # For mixture model results, for each seed, get the optimization with the smallest resulting NLL
@@ -32,9 +55,13 @@ res_mixture <- res_df %>%
   group_by(seed) %>%
   slice_min(NLL, n = 1, with_ties = FALSE) %>%
   ungroup()
+res_mixture$BIC <- res_mixture$AIC - 6 + 3*log(res_mixture$n)
 
 res_null <- res_df %>% filter(model == "null") %>% arrange(seed)
+res_null$BIC <- res_null$AIC - 2 + log(res_null$n)
+  
 res_sum <- res_df %>% filter(model == "sum") %>% arrange(seed)
+res_sum$BIC <- res_sum$AIC - 2 + log(res_sum$n)
 
 # Recombine
 res_df <- bind_rows(res_mixture, res_null, res_sum)
@@ -58,11 +85,13 @@ res_boot <- lapply(file_list_bootstrap, function(file) {
   ungroup() %>%
   arrange(model, seed, bootstrap)
 
+res_boot <- inner_join(res_boot, all_tracts_2_1500_counts)
+
 # 500*3*20 = 30000 (ok)
 
 # Compute quantiles for bootstrap
 q_probs <- c(0.025, 0.975)
-vars <- c("NLL", "AIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
+vars <- c("NLL", "AIC", "BIC", "w1", "phi1", "phi2", "mean1", "mean2", "mean")
 
 # For each seed and model, calculate quantile
 quantiles_df <- res_boot %>%
@@ -83,9 +112,9 @@ quantiles_df <- res_boot %>%
 res_df <- inner_join(res_df, quantiles_df)
 
 # Find best overall model per seed
-df_min_aic <- res_df %>%
+df_min_bic <- res_df %>%
   group_by(seed) %>%
-  slice_min(AIC, with_ties = FALSE) %>%
+  slice_min(BIC, with_ties = FALSE) %>%
   ungroup()
 
 res_null <- res_df %>% filter(model == "null")
@@ -106,23 +135,23 @@ mean(res_null$mean)
 
 ```{r}
 # Long format for mixture model
-df_min_aic_mixture <- df_min_aic %>% filter(model == "mixture")
+df_min_bic_mixture <- df_min_bic %>% filter(model == "mixture")
 
 # Main estimates
-df_long <- df_min_aic_mixture %>%
+df_long <- df_min_bic_mixture %>%
   pivot_longer(cols = c(w1, mean1, mean2, mean),
                names_to = "parameter", values_to = "est") %>%
   select(seed, parameter, est)
 
 # 2.5% quantiles
-df_long_2.5 <- df_min_aic_mixture %>%
+df_long_2.5 <- df_min_bic_mixture %>%
   pivot_longer(cols = c(w1_q2.5, mean1_q2.5, mean2_q2.5, mean_q2.5),
                names_to = "parameter", values_to = "q2.5") %>%
   mutate(parameter = gsub("_q2\\.5", "", parameter)) %>%
   select(seed, parameter, q2.5)
 
 # 97.5% quantiles
-df_long_97.5 <- df_min_aic_mixture %>%
+df_long_97.5 <- df_min_bic_mixture %>%
   pivot_longer(cols = c(w1_q97.5, mean1_q97.5, mean2_q97.5, mean_q97.5),
                names_to = "parameter", values_to = "q97.5") %>%
   mutate(parameter = gsub("_q97\\.5", "", parameter)) %>%
@@ -172,28 +201,24 @@ ggsave("sim.p2.png", combined_plot, height = 4, width = 7)
 
 ```{r}
 res_df <- res_df %>% arrange(model, seed)
-AIC_mixture <- res_df$AIC[1:20]
-AIC_null <- res_df$AIC[21:40]
-AIC_sum <- res_df$AIC[41:60]
+BIC_mixture <- res_df$BIC[1:20]
+BIC_null <- res_df$BIC[21:40]
+BIC_sum <- res_df$BIC[41:60]
 
-min(AIC_mixture - AIC_null) # larger values prefer null
-max(AIC_mixture - AIC_null)
+min(BIC_null - BIC_mixture) # larger values prefer null
+max(BIC_null - BIC_mixture)
 
-min(AIC_sum - AIC_null) # larger values prefer null
-max(AIC_sum - AIC_null) 
+min(BIC_sum - BIC_null) # larger values prefer null
+max(BIC_sum - BIC_null) 
 
-AIC_null - AIC_mixture
+BIC_mixture - BIC_null
 ```
 
 ```{r}
-res_df_filt <- res_df %>% filter(seed %in% c(5,6,7,19))
-res_df_filt$AIC[1:4] - res_df_filt$AIC[5:8]
+res_df_filt <- res_df %>% filter(seed %in% c(7,19))
+res_df_filt$BIC[1:2] - res_df_filt$BIC[3:4]
+res_df_filt$BIC[3:4] - res_df_filt$BIC[5:6]
 ```
-```{r}
-min(res_sum$mean)
-max(res_sum$mean)
-```
-
 ```{r}
 # List all files that start with 'l_psi' and end with '.csv'
 files <- list.files(pattern = "^l_psi.*\\.csv$")
@@ -217,15 +242,97 @@ data <- files %>%
   map_dfr(~ {
     seed <- str_extract(.x, "(?<=l_psi_seed)\\d+")
     
-    read_csv(.x) %>%
+    read.csv(.x) %>%
       filter(l >= 2, l <= 1500) %>%
       mutate(seed = as.integer(seed))
   })
 
-counts2 <- data %>% group_by(seed) %>% summarize(count = n())
+psi_seed7 <- data %>% filter(seed == 7) %>% pull(psi)
+psi_seed19 <- data %>% filter(seed == 19) %>% pull(psi)
 
-# View result
-min(counts2$count)
-max(counts2$count)
+data_seed7 <- data %>% filter(seed == 7) %>% pull(l)
+data_seed19 <- data %>% filter(seed == 19) %>% pull(l)
+
+res_df7 <- res_df_filt %>% filter(seed == 7)
+res_df19 <- res_df_filt %>% filter(seed == 19)
 ```
+
+```{r}
+# We can maybe plot the model fit for these two cases here.
+source("../../UK_biobank/results/fns_sim.R")
+
+M <- 1500
+
+avg_pmf <- function(l_vals, psi_i, FUN, ...) {
+  vapply(l_vals, function(ell) mean(FUN(ell, psi_i, ...)), numeric(1))
+}
+
+l_vals <- 2:M
+
+# Geometric model
+pmf_geom_7   <- avg_pmf(l_vals, psi_seed7, pL_geom_2M, phi = res_df7 %>% filter(model == "null") %>% pull(phi1), M = M)    
+pmf_geom_19   <- avg_pmf(l_vals, psi_seed19, pL_geom_2M, phi = res_df19 %>% filter(model == "null") %>% pull(phi1), M = M)    
+sum(pmf_geom_7*2:1500)
+sum(pmf_geom_19*2:1500)
+
+# Sum-of-two-geoms model
+pmf_2geom_7  <- avg_pmf(l_vals, psi_seed7, pL_geom2_2M, phi = res_df7 %>% filter(model == "sum") %>% pull(phi1), M = M) 
+pmf_2geom_19  <- avg_pmf(l_vals, psi_seed19, pL_geom2_2M, phi = res_df19 %>% filter(model == "sum") %>% pull(phi1), M = M) 
+sum(pmf_2geom_7*2:1500)
+sum(pmf_2geom_19*2:1500)
+
+# Mixture model
+pmf_mix_7    <- avg_pmf(l_vals, psi_seed7, pL_geom_2M_mixture,
+                      w1 = res_df7 %>% filter(model == "mixture") %>% pull(w1), phi1 = res_df7 %>% filter(model == "mixture") %>% pull(phi1), phi2 = res_df7 %>% filter(model == "mixture") %>% pull(phi2), M = M)
+pmf_mix_19    <- avg_pmf(l_vals, psi_seed19, pL_geom_2M_mixture,
+                      w1 = res_df19 %>% filter(model == "mixture") %>% pull(w1), phi1 = res_df19 %>% filter(model == "mixture") %>% pull(phi1), phi2 = res_df19 %>% filter(model == "mixture") %>% pull(phi2), M = M)
+sum(pmf_mix_7*2:1500)
+sum(pmf_mix_19*2:1500)
+
+# Empirical PMF
+emp_cnt_7 <- tabulate(factor(data_seed7, levels = l_vals), nbins = length(l_vals))
+emp_p_7   <- emp_cnt_7 / sum(emp_cnt_7)
+
+### Model fit plot
+# ---- Tidy + plot -----------------------------------------------------
+df_7 <- tibble(l = l_vals,
+             Empirical = emp_p_7,
+             Geometric = pmf_geom_7,
+             Sum   = pmf_2geom_7,
+             Mixture   = pmf_mix_7) %>%
+  pivot_longer(-l, names_to = "series", values_to = "p")
+
+BIN = 50
+binned <- df_7 %>%
+  mutate(
+    bin_start = ((l - 1) %/% BIN) * BIN + 1,
+    bin_end   = bin_start + BIN - 1,
+    bin       = paste0(bin_start, "–", bin_end)
+  ) %>%
+  group_by(series, bin_start, bin_end, bin) %>%
+  summarise(p = sum(p), n = dplyr::n(), .groups = "drop") %>%
+  arrange(series, bin_start)
+
+ggplot(binned, aes(bin_start)) +
+  geom_col(data = dplyr::filter(binned, series == "Empirical"),
+           aes(y = p), fill = "grey80", width = 1, alpha = 0.8) +
+  geom_line(data = dplyr::filter(binned, series != "Empirical"),
+            aes(y = p, colour = series), linewidth = 0.8) +
+  labs(x = "Tract length", y = "Log 10 probability") +
+  scale_y_continuous(trans = "log10") +
+  scale_color_discrete(
+    name   = "Model",
+    breaks = c("Geometric", "Sum", "Mixture"),   # <- match your actual `series` values
+    labels = c("Geometric", "Sum", "Mixture")
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+min(res_sum$mean)
+max(res_sum$mean)
+```
+
+
 

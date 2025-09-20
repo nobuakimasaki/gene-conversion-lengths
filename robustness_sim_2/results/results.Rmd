@@ -7,33 +7,33 @@ date: "2025-05-07"
 ```{r setup, include=FALSE}
 library(dplyr)
 library(stringr)
+library(purrr)
 
 # Each of these includes the result of fitting all models to all iterations for a specific distribution
 # Number of rows is 100 iterations * 2 models + 100 iterations * 43 grid search values = 4500 rows for mixture
 # After taking the min w.r.t BIC, we should have 300 rows per distribution * 5 distributions = 1500 rows
 
-# test <- read.csv("fit_model_geom_point.csv")
+# Get all CSV file paths from same directory
+files <- list.files(pattern = "\\.csv$", full.names = TRUE)
 
-# Get all CSV file names in the directory
-files <- list.files(pattern = "^fit.*\\.csv$", full.names = TRUE)
+# Helper to pull the number before "_point.csv"
+get_mean_from_fname <- function(path) {
+  as.numeric(sub("^.*_([-+]?[0-9]*\\.?[0-9]+)_point\\.csv$", "\\1", basename(path)))
+}
 
-# Read and row-bind all CSV files
-# results_AIC <- do.call(rbind, lapply(files, read.csv)) %>% 
-#   group_by(distribution, model, iteration) %>%
-#   slice_min(AIC, with_ties = FALSE)
+# Concatenate all files and add true mean
+results_all <- map_dfr(files, ~ read.csv(.x) %>%
+  mutate(true_mean = get_mean_from_fname(.x), filename = basename(.x)))
 
-results_BIC <- do.call(rbind, lapply(files, read.csv)) %>% 
-  group_by(distribution, model, iteration) %>%
+# Load all results and get mixture model with smallest BIC
+# Here, we get point estimates from fitting all models to all distributions (100 iterations)
+results_BIC <- results_all %>% 
+  group_by(distribution, model, true_mean, iteration) %>%
   slice_min(BIC, with_ties = FALSE)
 
-# AIC_selected <- results_AIC %>%
-#   group_by(distribution, iteration) %>%
-#   slice_min(AIC, with_ties = FALSE) %>%
-#   ungroup() 
-
-# 500 rows
+# 500 rows (because this time, we only get the best-fitting model)
 BIC_selected <- results_BIC %>%
-  group_by(distribution, iteration) %>%
+  group_by(distribution, true_mean, iteration) %>%
   slice_min(BIC, with_ties = FALSE) %>%
   ungroup() 
 
@@ -42,13 +42,17 @@ BIC_selected <- results_BIC %>%
 # Get all CSV file paths from the "bootstrap" subdirectory
 files <- list.files("bootstrap", pattern = "\\.csv$", full.names = TRUE)
 
-# Read and combine all CSV files
-boot_res <- do.call(rbind, lapply(files, read.csv))
+# Concatenate all files and extract the true mean
+boot_res <- map_dfr(files, ~ read.csv(.x) %>%
+  mutate(
+    filename = basename(.x),
+    true_mean = as.numeric(str_extract(filename, "(?<=_)[-+]?[0-9]*\\.?[0-9]+(?=_bootstrap\\.csv$)"))
+  ))
 
-# For each distribution, model, iteration, and bootstrap iteration, take the result with the lowest BIC
+# For each distribution, model, true_mean, iteration, and bootstrap iteration, take the result with the lowest BIC
 # 5 distributions * 3 models * 100 iterations * 500 bootstrap iters = 750000 rows
 boot_res <- boot_res %>%
-  group_by(distribution, model, iteration, bootstrap_iter) %>%
+  group_by(distribution, model, true_mean, iteration, bootstrap_iter) %>%
   slice_min(BIC, with_ties = FALSE)
 
 # Define the columns you want bootstrap intervals for
@@ -56,7 +60,7 @@ cols <- c("w1", "NLL", "AIC", "BIC", "mean", "phi1", "phi2")
 
 # Compute 2.5% and 97.5% quantiles for each column within each group
 boot_percentiles <- boot_res %>%
-  group_by(model, distribution, iteration) %>%
+  group_by(model, distribution, true_mean, iteration) %>%
   summarise(across(all_of(cols),
                    list(lower = ~quantile(.x, 0.025, na.rm = TRUE),
                         upper = ~quantile(.x, 0.975, na.rm = TRUE)),
@@ -64,12 +68,12 @@ boot_percentiles <- boot_res %>%
             .groups = "drop")
 
 boot_percentiles <- boot_percentiles %>%
-  mutate(covers = (mean_lower <= 21 & mean_upper >= 21))
+  mutate(covers = (mean_lower <= true_mean & mean_upper >= true_mean))
 
-combined <- left_join(results_BIC, boot_percentiles, by = c("model", "distribution", "iteration"))
+combined <- left_join(results_BIC, boot_percentiles, by = c("model", "distribution", "iteration", "true_mean"))
 
 BIC_selected <- combined %>%
-  group_by(distribution, iteration) %>%
+  group_by(distribution, iteration, true_mean) %>%
   slice_min(BIC, with_ties = FALSE) %>%
   ungroup() %>%
   mutate(model = "BIC-selected")
@@ -80,9 +84,9 @@ combined_augmented <- bind_rows(combined, BIC_selected)
 ```{r}
 # explore bias & empirical standard deviation & coverage
 summary_table <- combined_augmented %>%
-  group_by(distribution, model) %>%
+  group_by(distribution, true_mean, model) %>%
   summarise(
-    bias = mean(mean) - 21,
+    bias = mean(mean) - mean(true_mean),
     sd_est = sd(mean),
     coverage_rate = mean(covers),  
     .groups = "drop"
@@ -95,7 +99,7 @@ summary_table <- combined_augmented %>%
     distribution = str_to_title(distribution)  # Capitalize e.g., "geom" -> "Geom"
   )
 
-colnames(summary_table) <- c("Distribution", "Model", "Bias", "Emp. SD", "Coverage")
+colnames(summary_table) <- c("Distribution", "Mean", "Model", "Bias", "Emp. SD", "Coverage")
 
 summary_table <- summary_table %>%
   mutate(

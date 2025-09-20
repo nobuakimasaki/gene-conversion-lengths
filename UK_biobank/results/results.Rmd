@@ -211,42 +211,6 @@ n_est_2000
 ```{r}
 ### Response to reviewers
 
-# ### Overlap between components
-# phi1 <- res_df$est[res_df$variable == "phi1" & res_df$model == "mixture"]
-# phi2 <- res_df$est[res_df$variable == "phi2" & res_df$model == "mixture"]
-# 
-# # mean1 <- 1/phi1
-# # mean2 <- 1/phi2
-# 
-# # 95% central interval
-# lower1 <- qgeom(0.025, prob = phi1) + 1
-# upper1 <- qgeom(0.975, prob = phi1) + 1
-# 
-# lower2 <- qgeom(0.025, prob = phi2) + 1
-# upper2 <- qgeom(0.975, prob = phi2) + 1
-# 
-# # P(X < L)
-# lower_tail1 <- 1 - (1-phi1)^(lower1 - 1)
-# # P(X > U)
-# upper_tail1 <- (1-phi1)^upper1
-# # P(L <= X <= U)
-# 1 - lower_tail1 - upper_tail1
-#   
-# lower_tail2 <- 1 - (1-phi2)^(lower2 - 1)
-# upper_tail2 <- (1-phi2)^upper2
-# 1 - lower_tail2 - upper_tail2
-# 
-# c(lower1, upper1)
-# c(lower2, upper2)
-# 
-# # degree of overlap with 1.5 kb
-# (1-phi1)^1500
-# (1-phi2)^1500
-```
-
-```{r}
-### Response to reviewers
-
 library(tidyverse)
 source("fns_sim.R")
 
@@ -267,10 +231,10 @@ avg_pmf <- function(l_vals, psi_i, FUN, ...) {
 l_vals <- 2:M
 
 # Geometric model
-pmf_geom   <- avg_pmf(l_vals, psi_i, pL_geom_2M,       phi = 1/res_null_M1500$mean, M = M)    
+pmf_geom   <- avg_pmf(l_vals, psi_i, pL_geom_2M, phi = 1/res_null_M1500$mean, M = M)    
 
 # Sum-of-two-geoms model
-pmf_2geom  <- avg_pmf(l_vals, psi_i, pL_geom_2M_alt,   phi = 1/res_sum_M1500$mean, M = M) 
+pmf_2geom  <- avg_pmf(l_vals, psi_i, pL_geom2_2M, phi = 1/res_sum_M1500$mean, M = M) 
 
 # Mixture model
 pmf_mix    <- avg_pmf(l_vals, psi_i, pL_geom_2M_mixture,
@@ -310,14 +274,73 @@ ggsave("model_fits.png")
 # pmf_mix_df <- data.frame(l = 2:M, pmf = pmf_mix)
 # ggplot(pmf_mix_df, aes(x = l, y = pmf)) + geom_point()
 
+# pL_geom_2_normalized <- function(l, psi, phi) {
+#   pL_geom_2(l, psi, phi)/pL_geom_2_to_infty(l, psi, phi)
+# }
+# 
+# pL_geom2_2_normalized <- function(l, psi, phi) {
+#   C <- phi + psi - phi*psi
+#   denom <- C*( - 2*phi + 1 ) + 2*phi
+#   num <- C*(l-3)*phi^2*(1-phi)^(l-2) + 2*phi^2*(1-phi)^(l-2)
+#   return(num/denom)
+# }
+
 # Get amount of density above 1.5 kb for estimated parameters
 pmf_mix_not_truncated <- avg_pmf(2:1500, psi_i, pL_geom_2_mixture,
                       w1 = res_mixture_M1500$w1, phi1 = res_mixture_M1500$phi1, phi2 = res_mixture_M1500$phi2)
 
+# pmf_geom_not_truncated <- avg_pmf(2:1500, psi_i, pL_geom_2_normalized, phi = 1/res_null_M1500$mean)
+# 
+# pmf_geom2_not_truncated <- avg_pmf(2:1500, psi_i, pL_geom2_2_normalized, phi = 1/res_sum_M1500$mean)
+
 1 - sum(pmf_mix_not_truncated)
 
+l_no_singleton <- all_data$l[all_data$l > 1]
+sum(l_no_singleton > 1500)
+length(l_no_singleton) - sum(l_no_singleton > 1500)
+sum(l_no_singleton > 1500)/length(l_no_singleton)
+# pmf_mix_not_truncated_5000 <- avg_pmf(2:5000, psi_i, pL_geom_2_mixture,
+#                       w1 = res_mixture_M1500$w1, phi1 = res_mixture_M1500$phi1, phi2 = res_mixture_M1500$phi2)
+# 
+# 1 - sum(pmf_mix_not_truncated_5000)
 # Check if this is a valid distribution
 # lapply(2:50000, pL_geom_2_mixture, 0.001, 0.1, 1/100, 1/200) %>% unlist() %>% sum()
+```
+
+```{r}
+### Response to reviewers
+
+### Overlap between components
+phi1 <- res_df$est[res_df$variable == "phi1" & res_df$model == "mixture"]
+phi2 <- res_df$est[res_df$variable == "phi2" & res_df$model == "mixture"]
+
+# mean1 <- 1/phi1
+# mean2 <- 1/phi2
+
+# 95% central interval
+lower1 <- qgeom(0.025, prob = phi1) + 1
+upper1 <- qgeom(0.975, prob = phi1) + 1
+
+lower2 <- qgeom(0.025, prob = phi2) + 1
+upper2 <- qgeom(0.975, prob = phi2) + 1
+
+# P(X < L)
+lower_tail1 <- 1 - (1-phi1)^(lower1 - 1)
+# P(X > U)
+upper_tail1 <- (1-phi1)^upper1
+# P(L <= X <= U)
+1 - lower_tail1 - upper_tail1
+
+lower_tail2 <- 1 - (1-phi2)^(lower2 - 1)
+upper_tail2 <- (1-phi2)^upper2
+1 - lower_tail2 - upper_tail2
+
+c(lower1, upper1)
+c(lower2, upper2)
+
+# degree of overlap with 1.5 kb
+(1-phi1)^1500
+(1-phi2)^1500
 ```
 
 ```{r}

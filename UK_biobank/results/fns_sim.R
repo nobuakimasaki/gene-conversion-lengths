@@ -46,12 +46,14 @@ sim_gene_conv <- function(actual, psi) {
 
 ###### pmf ######
 
+# geometric 
 pL_geom_2M <- function(l, psi, phi, M) {
   denom <- (1-phi)-(1-phi)^M
   num <- phi*(1-phi)^(l-1)
   return(num/denom)
 }
 
+# sum of two geom
 pL_geom2_2M <- function(l, psi, phi, M) {
   C <- phi + psi - phi*psi
   denom <- C*( (3-M)*phi*(1-phi)^(M-1) - (1-phi)^(M-1) - 2*phi + 1 ) + 2*phi*(1-(1-phi)^(M-1))
@@ -59,6 +61,7 @@ pL_geom2_2M <- function(l, psi, phi, M) {
   return(num/denom)
 }
 
+# joint negative log likelihood
 neg_log_lik <- function(phi, psi_lst, pL, l_lst, M = FALSE) {
   if (M == FALSE) {
     val <- -sum(log(unlist(map2(l_lst, psi_lst, pL, phi = phi))))
@@ -68,28 +71,33 @@ neg_log_lik <- function(phi, psi_lst, pL, l_lst, M = FALSE) {
   return(val)
 }
 
-###### editing pmf ######
+###### editing pmf (mixture) ######
 
+# P(L = l) for geometric model above l >= 2
 pL_geom_2 <- function(l, psi, phi) {
   C <- phi+psi-phi*psi
   if (l >= 2) {return(phi*(1-phi)^(l-1)*psi^2/(C^2))}
   else (return(NULL))
 }
 
+# denom for truncation
 pL_geom_2_to_M <- function(l, psi, phi, M) {
   C <- phi+psi-phi*psi
   return(psi^2*((1-phi)-(1-phi)^M)/(C^2))
 }
 
+# denom if we do not truncate above
 pL_geom_2_to_infty <- function(l, psi, phi) {
   C <- phi+psi-phi*psi
   return(psi^2*((1-phi))/(C^2))
 }
 
+# Another way of calculating pL_geom2_2M
 pL_geom_2M_alt <- function(l, psi, phi, M) {
   return(pL_geom_2(l, psi, phi)/pL_geom_2_to_M(l, psi, phi, M))
 }
 
+# Mixture model truncated above
 pL_geom_2M_mixture <- function(l, psi, w1, phi1, phi2, M) {
   w2 <- 1 - w1
   num <- w1*pL_geom_2(l, psi, phi1) + w2*pL_geom_2(l, psi, phi2)
@@ -97,6 +105,7 @@ pL_geom_2M_mixture <- function(l, psi, w1, phi1, phi2, M) {
   return(num/denom)
 }
 
+# Mixture model not truncated above
 pL_geom_2_mixture <- function(l, psi, w1, phi1, phi2) {
   w2 <- 1 - w1
   num <- w1*pL_geom_2(l, psi, phi1) + w2*pL_geom_2(l, psi, phi2)
