@@ -11,7 +11,8 @@ library(purrr)
 
 # Each of these includes the result of fitting all models to all iterations for a specific distribution
 # Number of rows is 100 iterations * 2 models + 100 iterations * 43 grid search values = 4500 rows for mixture
-# After taking the min w.r.t BIC, we should have 300 rows per distribution * 5 distributions = 1500 rows
+# Then, concatenating 10 distributions is 45000 rows
+# After taking the min w.r.t BIC, we should have 300 rows per distribution * 10 distributions = 3000 rows
 
 # Get all CSV file paths from same directory
 files <- list.files(pattern = "\\.csv$", full.names = TRUE)
@@ -31,11 +32,11 @@ results_BIC <- results_all %>%
   group_by(distribution, model, true_mean, iteration) %>%
   slice_min(BIC, with_ties = FALSE)
 
-# 500 rows (because this time, we only get the best-fitting model)
-BIC_selected <- results_BIC %>%
-  group_by(distribution, true_mean, iteration) %>%
-  slice_min(BIC, with_ties = FALSE) %>%
-  ungroup() 
+# # 1000 rows (because this time, we only get the best-fitting model)
+# BIC_selected <- results_BIC %>%
+#   group_by(distribution, true_mean, iteration) %>%
+#   slice_min(BIC, with_ties = FALSE) %>%
+#   ungroup() 
 
 # analyzing bootstrap
 
@@ -50,7 +51,7 @@ boot_res <- map_dfr(files, ~ read.csv(.x) %>%
   ))
 
 # For each distribution, model, true_mean, iteration, and bootstrap iteration, take the result with the lowest BIC
-# 5 distributions * 3 models * 100 iterations * 500 bootstrap iters = 750000 rows
+# 5 distributions * 2 means * 3 models * 100 iterations * 500 bootstrap iters = 1500000 rows
 boot_res <- boot_res %>%
   group_by(distribution, model, true_mean, iteration, bootstrap_iter) %>%
   slice_min(BIC, with_ties = FALSE)
@@ -58,6 +59,7 @@ boot_res <- boot_res %>%
 # Define the columns you want bootstrap intervals for
 cols <- c("w1", "NLL", "AIC", "BIC", "mean", "phi1", "phi2")
 
+# 5 distributions * 2 means * 3 models * 100 iterations = 3000 rows
 # Compute 2.5% and 97.5% quantiles for each column within each group
 boot_percentiles <- boot_res %>%
   group_by(model, distribution, true_mean, iteration) %>%
@@ -83,8 +85,9 @@ combined_augmented <- bind_rows(combined, BIC_selected)
 
 ```{r}
 # explore bias & empirical standard deviation & coverage
-summary_table <- combined_augmented %>%
-  group_by(distribution, true_mean, model) %>%
+summary_table_21 <- combined_augmented %>%
+  filter(true_mean == 21) %>%
+  group_by(distribution, model) %>%
   summarise(
     bias = mean(mean) - mean(true_mean),
     sd_est = sd(mean),
@@ -96,30 +99,81 @@ summary_table <- combined_augmented %>%
                    "null" = "Geom",
                    "sum" = "Geom2",
                    "mixture" = "Mixture"),
-    distribution = str_to_title(distribution)  # Capitalize e.g., "geom" -> "Geom"
+    distribution = recode(distribution,
+                   "geom" = "Geom (mean: 21 bp)",
+                   "geom2" = "Geom2 (mean: 21 bp)",
+                   "geom3" = "Geom3 (mean: 21 bp)",
+                   "mixture" = "Mixture (mean: 21 bp)",
+                   "unif" = "Uniform (mean: 21 bp)") # Capitalize e.g., "geom" -> "Geom"
   )
 
-colnames(summary_table) <- c("Distribution", "Mean", "Model", "Bias", "Emp. SD", "Coverage")
+colnames(summary_table_21) <- c("Distribution", "Assumed Distribution", "Bias", "SD", "Coverage")
 
-summary_table <- summary_table %>%
+summary_table_21 <- summary_table_21 %>%
   mutate(
     Bias = as.numeric(formatC(Bias, format = "f", digits = 1)),
-    `Emp. SD` = as.numeric(formatC(`Emp. SD`, format = "f", digits = 1)),
+    `SD` = as.numeric(formatC(`SD`, format = "f", digits = 1)),
     Coverage = as.numeric(formatC(Coverage, format = "f", digits = 2))
   )
+
+# explore bias & empirical standard deviation & coverage
+summary_table_100 <- combined_augmented %>%
+  filter(true_mean == 100) %>%
+  group_by(distribution, model) %>%
+  summarise(
+    bias = mean(mean) - mean(true_mean),
+    sd_est = sd(mean),
+    coverage_rate = mean(covers),  
+    .groups = "drop"
+  ) %>%
+  mutate(
+    model = recode(model,
+                   "null" = "Geom",
+                   "sum" = "Geom2",
+                   "mixture" = "Mixture"),
+    distribution = recode(distribution,
+                   "geom" = "Geom (mean: 100 bp)",
+                   "geom2" = "Geom2 (mean: 100 bp)",
+                   "geom3" = "Geom3 (mean: 100 bp)",
+                   "mixture" = "Mixture (mean: 100 bp)",
+                   "unif" = "Uniform (mean: 100 bp)") # Capitalize e.g., "geom" -> "Geom"
+  )
+
+colnames(summary_table_100) <- c("Distribution", "Assumed Distribution", "Bias", "SD", "Coverage")
+
+summary_table_100 <- summary_table_100 %>%
+  mutate(
+    Bias = as.numeric(formatC(Bias, format = "f", digits = 1)),
+    `SD` = as.numeric(formatC(`SD`, format = "f", digits = 1)),
+    Coverage = as.numeric(formatC(Coverage, format = "f", digits = 2))
+  )
+
+dist_order    <- c("geom" = "Geom (mean: 21 bp)", "geom" = "Geom (mean: 100 bp)",
+                   "geom2" = "Geom2 (mean: 21 bp)", "geom2" = "Geom2 (mean: 100 bp)",
+                   "geom3" = "Geom3 (mean: 21 bp)", "geom3" = "Geom3 (mean: 100 bp)",
+                   "Uniform (mean: 21 bp)", "Uniform (mean: 100 bp)",
+                   "Mixture (mean: 21 bp)", "Mixture (mean: 100 bp)")         
+
+assumed_order <- c("Geom", "Geom2", "Mixture", "BIC-selected")
+
+library(forcats)
+
+summary_table <- rbind(summary_table_21, summary_table_100) %>%
+  mutate(
+    Distribution = fct_relevel(Distribution, dist_order),
+    `Assumed Distribution` = fct_relevel(`Assumed Distribution`, assumed_order)
+  ) %>%
+  arrange(Distribution, `Assumed Distribution`)
 ```
 
 ```{r}
 library(flextable)
 library(officer)
 
-# Create flextable
-ft <- flextable(summary_table)
-
 # Create flextable and apply formatting
 ft <- flextable(summary_table) %>%
   colformat_num(j = "Bias", digits = 1) %>%
-  colformat_num(j = "Emp. SD", digits = 1) %>%
+  colformat_num(j = "SD", digits = 1) %>%
   colformat_num(j = "Coverage", digits = 2) %>%
   autofit()
 
@@ -131,30 +185,36 @@ print(doc, target = "table_output.docx")
 ```
 
 ```{r}
-# Step 1: Identify the set of all models and distributions
-all_models <- unique(results_BIC$model)
-all_distributions <- unique(results_BIC$distribution)
+library(tidyr)
 
-# Step 2: Get model with smallest AIC per (distribution, iteration)
-selected_models <- results_BIC %>%
+results_BIC_21 <- results_BIC %>% filter(true_mean == 21)
+
+# Step 1: Identify the set of all models and distributions
+all_models <- unique(results_BIC_21$model)
+all_distributions <- unique(results_BIC_21$distribution)
+
+# Step 2: Get model with smallest BIC per (distribution, mean, iteration)
+selected_models_21 <- results_BIC_21 %>%
   group_by(distribution, iteration) %>%
   slice_min(order_by = BIC, with_ties = FALSE) %>%
   ungroup()
 
 # Step 3: Count selections
-model_selection_counts <- selected_models %>%
+model_selection_counts_21 <- selected_models_21 %>%
   count(distribution, model, name = "count")
 
 # Step 4: Ensure all combinations are represented, fill in 0s
-model_selection_counts_full <- model_selection_counts %>%
+model_selection_counts_full_21 <- model_selection_counts_21 %>%
   complete(distribution = all_distributions, model = all_models, fill = list(count = 0))
 
-# View result
-model_selection_counts_full
-
-model_selection_counts_formatted <- model_selection_counts_full %>%
+model_selection_counts_formatted_21 <- model_selection_counts_full_21 %>%
   mutate(
-    Distribution = str_to_title(distribution),
+    Distribution = recode(distribution,
+                   "geom" = "Geom (mean: 21 bp)",
+                   "geom2" = "Geom2 (mean: 21 bp)",
+                   "geom3" = "Geom3 (mean: 21 bp)",
+                   "mixture" = "Mixture (mean: 21 bp)",
+                   "unif" = "Uniform (mean: 21 bp)"),
     `Setting of N` = case_when(
       model == "mixture" ~ "Mixture",
       model == "null" ~ "Geom",
@@ -169,20 +229,136 @@ model_selection_counts_formatted <- model_selection_counts_full %>%
   )
 
 # View result
-model_selection_counts_formatted
+model_selection_counts_formatted_21
 
 # Create flextable and apply formatting
-ft2 <- flextable(model_selection_counts_formatted) %>%
-  autofit()
+# ft2 <- flextable(model_selection_counts_formatted_21) %>%
+#   autofit()
+# 
+# # Save as Word document
+# doc2 <- read_docx() %>%
+#   body_add_flextable(value = ft2)
+# 
+# print(doc2, target = "table_output_selection_21.docx")
+```
+```{r}
+results_BIC_100 <- results_BIC %>% filter(true_mean == 100)
 
-# Save as Word document
-doc2 <- read_docx() %>%
-  body_add_flextable(value = ft2)
+# Step 2: Get model with smallest BIC per (distribution, mean, iteration)
+selected_models_100 <- results_BIC_100 %>%
+  group_by(distribution, iteration) %>%
+  slice_min(order_by = BIC, with_ties = FALSE) %>%
+  ungroup()
 
-print(doc2, target = "table_output2.docx")
+# Step 3: Count selections
+model_selection_counts_100 <- selected_models_100 %>%
+  count(distribution, model, name = "count")
+
+# Step 4: Ensure all combinations are represented, fill in 0s
+model_selection_counts_full_100 <- model_selection_counts_100 %>%
+  complete(distribution = all_distributions, model = all_models, fill = list(count = 0))
+
+model_selection_counts_formatted_100 <- model_selection_counts_full_100 %>%
+  mutate(
+    Distribution = recode(distribution,
+                   "geom" = "Geom (mean: 100 bp)",
+                   "geom2" = "Geom2 (mean: 100 bp)",
+                   "geom3" = "Geom3 (mean: 100 bp)",
+                   "mixture" = "Mixture (mean: 100 bp)",
+                   "unif" = "Uniform (mean: 100 bp)"),
+    `Setting of N` = case_when(
+      model == "mixture" ~ "Mixture",
+      model == "null" ~ "Geom",
+      model == "sum" ~ "Geom2",
+      TRUE ~ str_to_title(model)  # fallback for any others
+    )
+  ) %>%
+  select(
+    Distribution,
+    `Setting of N`,
+    `Times Selected by BIC` = count
+  )
+
+# View result
+model_selection_counts_formatted_100
+
+N_order <- c("Geom", "Geom2", "Mixture")
+
+summary_table2 <- rbind(model_selection_counts_formatted_21, model_selection_counts_formatted_100) %>%
+  mutate(
+    Distribution = fct_relevel(Distribution, dist_order),
+    `Setting of N` = fct_relevel(`Setting of N`, N_order)
+  ) %>%
+  arrange(Distribution, `Setting of N`)
+
+# Create flextable and apply formatting
+ft <- flextable(summary_table2)
+
+# Save as Word doc and open it
+doc <- read_docx() %>%
+  body_add_flextable(value = ft)
+
+print(doc, target = "table_output2.docx")
 ```
 
 ```{r}
+### not used in paper but want to check bias of individual parameters in mixture
+mixture_res <- combined_augmented %>% filter(model == "mixture", distribution == "mixture")
+mixture_res$covers_w1 <- mixture_res$w1_upper > 0.05 & mixture_res$w1_lower < 0.05
+
+mixture_res_100 <- mixture_res %>%
+  filter(true_mean == 100) %>%
+  group_by(distribution, model) %>%
+  summarise(
+    bias_w1 = mean(w1) - 0.05,
+    bias_m1 = mean(1/phi1) - 700,
+    bias_m2 = mean(1/phi2) - (100-700*0.05)/(1-0.05),
+    
+    sd_w1 = sd(w1),
+    sd_m1 = sd(1/phi1),
+    sd_m2 = sd(1/phi2),
+    
+    coverage_w1 = mean(mixture_res$w1_upper > 0.05 & mixture_res$w1_lower < 0.05),  
+    coverage_m1 = mean(1/mixture_res$phi1_lower > 700 & 1/mixture_res$phi1_upper < 700),  
+    coverage_m2 = mean(1/mixture_res$phi2_lower > (100-700*0.05)/(1-0.05) & mixture_res$phi2_upper < (100-700*0.05)/(1-0.05)),  
+    .groups = "drop"
+  ) %>%
+  mutate(
+    model = recode(model,
+                   "null" = "Geom",
+                   "sum" = "Geom2",
+                   "mixture" = "Mixture"),
+    distribution = str_to_title(distribution)  # Capitalize e.g., "geom" -> "Geom"
+  )
+
+mixture_res_21 <- mixture_res %>%
+  filter(true_mean == 21) %>%
+  group_by(distribution, model) %>%
+  summarise(
+    bias_w1 = mean(w1) - 0.005,
+    bias_m1 = mean(1/phi1) - 725,
+    bias_m2 = mean(1/phi2) - (21-725*0.005)/(1-0.005),
+    
+    sd_w1 = sd(w1),
+    sd_m1 = sd(1/phi1),
+    sd_m2 = sd(1/phi2),
+    
+    coverage_w1 = mean(mixture_res$w1_upper > 0.005 & mixture_res$w1_lower < 0.005),  
+    coverage_m1 = mean(1/mixture_res$phi1_lower > 725 & 1/mixture_res$phi1_upper < 725),  
+    coverage_m2 = mean(1/mixture_res$phi2_lower > (21-725*0.005)/(1-0.005) & mixture_res$phi2_upper < (21-725*0.005)/(1-0.005)),  
+    .groups = "drop"
+  ) %>%
+  mutate(
+    model = recode(model,
+                   "null" = "Geom",
+                   "sum" = "Geom2",
+                   "mixture" = "Mixture"),
+    distribution = str_to_title(distribution)  # Capitalize e.g., "geom" -> "Geom"
+  )
+```
+
+```{r}
+library(ggplot2)
 # Supplementary Figure
 
 # Define PMF functions
@@ -191,13 +367,13 @@ calc_pmf_geom2 <- function(n, phi) {(n - 1) * (1 - phi)^(n - 2) * phi^2}
 calc_pmf_geom3 <- function(n, phi) {choose(n - 1, 2) * (1 - phi)^(n - 3) * phi^3}
 
 # Define support
-x <- 1:1500
+x <- 1:2000
 
 # Compute PMFs
-pmf_geom     <- sapply(x, calc_pmf_geom, phi = 1 / 300)
-pmf_geom2    <- sapply(x, calc_pmf_geom2, phi = 1 / 150)
-pmf_geom3    <- sapply(x, calc_pmf_geom3, phi = 1 / 100)
-pmf_uniform  <- ifelse(x >= 1 & x <= 599, 1 / 599, 0)
+pmf_geom     <- sapply(x, calc_pmf_geom, phi = 1 / 100)
+pmf_geom2    <- sapply(x, calc_pmf_geom2, phi = 2 / 100)
+pmf_geom3    <- sapply(x, calc_pmf_geom3, phi = 3 / 100)
+pmf_uniform  <- ifelse(x >= 1 & x <= 199, 1 / 199, 0)
 
 # Mixture parameters
 weight1 <- 0.05
@@ -210,6 +386,12 @@ phi2 <- 1 / mean2
 pmf_mix1 <- sapply(x, calc_pmf_geom, phi = phi1)
 pmf_mix2 <- sapply(x, calc_pmf_geom, phi = phi2)
 pmf_mixture <- weight1 * pmf_mix1 + (1 - weight1) * pmf_mix2
+
+sum(pmf_geom*x)
+sum(pmf_geom2*x)
+sum(pmf_geom3*x)
+sum(pmf_uniform*x)
+sum(pmf_mixture*x)
 
 # Combine into one data frame
 data <- data.frame(
@@ -239,22 +421,117 @@ color_palette <- c(
 )
 
 # Plot
-ggplot(data_long, aes(x = x, y = log(Probability), color = Distribution)) +
+fig_100 <- ggplot(data_long, aes(x = x, y = log(Probability), color = Distribution)) +
   geom_line(size = 1) +
   scale_color_manual(
     values = color_palette,
     breaks = c("Geometric", "Sum2Geometric", "Sum3Geometric", "Uniform", "Mixture"),
-    labels = c("Geometric", "Sum of two geometric", "Sum of three geometric", "Uniform", "Mixture")
+    labels = c("Geometric (mean: 100 bp)", "Sum of two geometric (mean: 100 bp)", "Sum of three geometric (mean: 100 bp)", "Uniform (mean: 100 bp)", "Mixture (mean: 100 bp)")
   ) +
   scale_x_continuous(
-    limits = c(1, 1500),
-    breaks = c(1, seq(250, 1500, by = 250))
+    limits = c(1, 2000),
+    breaks = c(1, seq(250, 2000, by = 250))
   ) +
   labs(x = "Tract length (bp)", y = "log(P(N = n))") +
   theme_bw() +
   theme(legend.title = element_blank())
 
 # Save plot
-ggsave("figs/pmf.png", width = 7, height = 5)
+ggsave("figs/pmf_100.png", width = 7, height = 5)
+```
+```{r}
+library(ggplot2)
+# Supplementary Figure
+
+# Define PMF functions
+calc_pmf_geom <- function(n, phi) {(1 - phi)^(n - 1) * phi}
+calc_pmf_geom2 <- function(n, phi) {(n - 1) * (1 - phi)^(n - 2) * phi^2}
+calc_pmf_geom3 <- function(n, phi) {choose(n - 1, 2) * (1 - phi)^(n - 3) * phi^3}
+
+# Define support
+x <- 1:750
+
+# Compute PMFs
+pmf_geom     <- sapply(x, calc_pmf_geom, phi = 1 / 21)
+pmf_geom2    <- sapply(x, calc_pmf_geom2, phi = 2 / 21)
+pmf_geom3    <- sapply(x, calc_pmf_geom3, phi = 3 / 21)
+pmf_uniform  <- ifelse(x >= 1 & x <= 41, 1 / 41, 0)
+
+# Mixture parameters
+weight1 <- 0.005
+mean1 <- 725
+mean2 <- (21 - weight1 * mean1) / (1 - weight1)  # = 1300 / 19
+phi1 <- 1 / mean1
+phi2 <- 1 / mean2
+
+# Compute mixture using calc_pmf_geom
+pmf_mix1 <- sapply(x, calc_pmf_geom, phi = phi1)
+pmf_mix2 <- sapply(x, calc_pmf_geom, phi = phi2)
+pmf_mixture <- weight1 * pmf_mix1 + (1 - weight1) * pmf_mix2
+
+sum(pmf_geom*x)
+sum(pmf_geom2*x)
+sum(pmf_geom3*x)
+sum(pmf_uniform*x)
+sum(pmf_mixture*x)
+
+# Combine into one data frame
+data <- data.frame(
+  x = x,
+  Geometric = pmf_geom,
+  Sum2Geometric = pmf_geom2,
+  Sum3Geometric = pmf_geom3,
+  Uniform = pmf_uniform,
+  Mixture = pmf_mixture
+)
+
+# Reshape for ggplot
+data_long <- tidyr::pivot_longer(
+  data,
+  cols = -x,
+  names_to = "Distribution",
+  values_to = "Probability"
+)
+
+# Color palette
+color_palette <- c(
+  "Geometric" = "#56B4E9",
+  "Sum2Geometric" = "#F0E442",
+  "Sum3Geometric" = "#E69F00",
+  "Uniform" = "#009E73",
+  "Mixture" = "#CC79A7"
+)
+
+# Plot
+fig_21 <- ggplot(data_long, aes(x = x, y = log(Probability), color = Distribution)) +
+  geom_line(size = 1) +
+  scale_color_manual(
+    values = color_palette,
+    breaks = c("Geometric", "Sum2Geometric", "Sum3Geometric", "Uniform", "Mixture"),
+    labels = c("Geometric (mean: 21 bp)", "Sum of two geometric (mean: 21 bp)", "Sum of three geometric (mean: 21 bp)", "Uniform (mean: 21 bp)", "Mixture (mean: 21 bp)")
+  ) +
+  scale_x_continuous(
+    limits = c(1, 750),
+    breaks = c(1, seq(250, 750, by = 250))
+  ) +
+  labs(x = "Tract length (bp)", y = "log(P(N = n))") +
+  theme_bw() +
+  theme(legend.title = element_blank())
+
+# Save plot
+ggsave("figs/pmf_21.png", width = 7, height = 5)
+```
+
+```{r}
+library(patchwork)
+
+# two ggplots: p1, p2
+combo <- fig_21 + fig_100 + 
+  plot_layout(ncol = 1, widths = c(1, 1))
+
+combo
+
+# save
+ggsave("figs/figs_dist.png", combo, width = 7, height = 7, dpi = 300)
 ```
 

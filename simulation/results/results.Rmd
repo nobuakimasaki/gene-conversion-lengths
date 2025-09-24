@@ -32,6 +32,8 @@ all_tracts <- rbindlist(lapply(tract_files, function(f) {
 all_tracts$l <- all_tracts$V2 - all_tracts$V1 + 1
 all_tracts_2_1500 <- all_tracts %>% filter(l > 1 & l <= 1500)
 all_tracts_2_1500_counts <- all_tracts_2_1500 %>% group_by(seed) %>% summarize(n = n())
+min(all_tracts_2_1500_counts$n)
+max(all_tracts_2_1500_counts$n)
 
 # Load main results files
 file_list <- list.files(pattern = "^res.*seed[0-9]+.*\\.csv$", full.names = TRUE)
@@ -49,6 +51,10 @@ res_df <- res_df %>% inner_join(all_tracts_2_1500_counts)
 
 # Split by model
 
+# res_mixture_check <- res_df %>%
+#   filter(model == "mixture") %>%
+#   arrange(seed, NLL)
+
 # For mixture model results, for each seed, get the optimization with the smallest resulting NLL
 res_mixture <- res_df %>%
   filter(model == "mixture") %>%
@@ -65,6 +71,9 @@ res_sum$BIC <- res_sum$AIC - 2 + log(res_sum$n)
 
 # Recombine
 res_df <- bind_rows(res_mixture, res_null, res_sum)
+
+# Mean estimate (of the mean) under geometric
+mean(res_null$mean) 
 
 # Load bootstrap files
 file_list_bootstrap <- list.files(pattern = "^bootstrap.*seed[0-9]+.*\\.csv$", full.names = TRUE)
@@ -105,6 +114,8 @@ quantiles_df <- res_boot %>%
         flatten_dbl()
     )
   })
+
+quantiles_df
 ```
 
 ```{r}
@@ -205,7 +216,7 @@ BIC_mixture <- res_df$BIC[1:20]
 BIC_null <- res_df$BIC[21:40]
 BIC_sum <- res_df$BIC[41:60]
 
-min(BIC_null - BIC_mixture) # larger values prefer null
+min(BIC_null - BIC_mixture) # larger values prefer mixture
 max(BIC_null - BIC_mixture)
 
 min(BIC_sum - BIC_null) # larger values prefer null
@@ -216,7 +227,7 @@ BIC_mixture - BIC_null
 
 ```{r}
 res_df_filt <- res_df %>% filter(seed %in% c(7,19))
-res_df_filt$BIC[1:2] - res_df_filt$BIC[3:4]
+res_df_filt$BIC[3:4] - res_df_filt$BIC[1:2] # larger values prefer mixture
 res_df_filt$BIC[3:4] - res_df_filt$BIC[5:6]
 ```
 ```{r}
@@ -292,6 +303,8 @@ sum(pmf_mix_19*2:1500)
 # Empirical PMF
 emp_cnt_7 <- tabulate(factor(data_seed7, levels = l_vals), nbins = length(l_vals))
 emp_p_7   <- emp_cnt_7 / sum(emp_cnt_7)
+emp_cnt_19 <- tabulate(factor(data_seed19, levels = l_vals), nbins = length(l_vals))
+emp_p_19   <- emp_cnt_19 / sum(emp_cnt_19)
 
 ### Model fit plot
 # ---- Tidy + plot -----------------------------------------------------
@@ -302,23 +315,12 @@ df_7 <- tibble(l = l_vals,
              Mixture   = pmf_mix_7) %>%
   pivot_longer(-l, names_to = "series", values_to = "p")
 
-BIN = 50
-binned <- df_7 %>%
-  mutate(
-    bin_start = ((l - 1) %/% BIN) * BIN + 1,
-    bin_end   = bin_start + BIN - 1,
-    bin       = paste0(bin_start, "–", bin_end)
-  ) %>%
-  group_by(series, bin_start, bin_end, bin) %>%
-  summarise(p = sum(p), n = dplyr::n(), .groups = "drop") %>%
-  arrange(series, bin_start)
-
-ggplot(binned, aes(bin_start)) +
-  geom_col(data = dplyr::filter(binned, series == "Empirical"),
-           aes(y = p), fill = "grey80", width = 1, alpha = 0.8) +
-  geom_line(data = dplyr::filter(binned, series != "Empirical"),
+fig_replicate7 <- ggplot(df_7, aes(l)) +
+  geom_col(data = dplyr::filter(df_7, series == "Empirical"),
+           aes(y = p), fill = "grey", width = 5, alpha = 0.8) +
+  geom_line(data = dplyr::filter(df_7, series != "Empirical"),
             aes(y = p, colour = series), linewidth = 0.8) +
-  labs(x = "Tract length", y = "Log 10 probability") +
+  labs(title = "Replicate 7", x = "Tract length", y = "Log 10 probability") +
   scale_y_continuous(trans = "log10") +
   scale_color_discrete(
     name   = "Model",
@@ -326,12 +328,46 @@ ggplot(binned, aes(bin_start)) +
     labels = c("Geometric", "Sum", "Mixture")
   ) +
   theme_bw() +
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
 ```
 
 ```{r}
-min(res_sum$mean)
-max(res_sum$mean)
+### Model fit plot
+# ---- Tidy + plot -----------------------------------------------------
+df_19 <- tibble(l = l_vals,
+             Empirical = emp_p_19,
+             Geometric = pmf_geom_19,
+             Sum   = pmf_2geom_19,
+             Mixture   = pmf_mix_19) %>%
+  pivot_longer(-l, names_to = "series", values_to = "p")
+
+fig_replicate19 <- ggplot(df_19, aes(l)) +
+  geom_col(data = dplyr::filter(df_19, series == "Empirical"),
+           aes(y = p), fill = "grey", width = 5, alpha = 0.8) +
+  geom_line(data = dplyr::filter(df_19, series != "Empirical"),
+            aes(y = p, colour = series), linewidth = 0.8) +
+  labs(title = "Replicate 19", x = "Tract length", y = "Log 10 probability") +
+  scale_y_continuous(trans = "log10") +
+  scale_color_discrete(
+    name   = "Model",
+    breaks = c("Geometric", "Sum", "Mixture"),   # <- match your actual `series` values
+    labels = c("Geometric", "Sum", "Mixture")
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+library(patchwork)
+
+combo <- fig_replicate7 + fig_replicate19 +
+  plot_layout(
+    guides = "collect"      # one shared legend
+  ) &
+  theme(legend.position = "bottom")
+
+# export
+ggsave("replicates_7_19_side_by_side.png", combo, width = 10, height = 4, dpi = 300)
 ```
 
 

@@ -138,6 +138,8 @@ res_df <- inner_join(long_est, quantiles_by_model) %>% select(M, model, variable
 res_BIC <- res_df %>% filter(variable == "BIC", M == "1500")
 
 res_df_1500 <- res_df %>% filter(M == "1500")
+
+res_BIC$est[[3]] - res_BIC$est[[1]]
 ```
 
 ```{r}
@@ -231,10 +233,10 @@ avg_pmf <- function(l_vals, psi_i, FUN, ...) {
 l_vals <- 2:M
 
 # Geometric model
-pmf_geom   <- avg_pmf(l_vals, psi_i, pL_geom_2M, phi = 1/res_null_M1500$mean, M = M)    
+pmf_geom   <- avg_pmf(l_vals, psi_i, pL_geom_2M, phi = res_null_M1500$phi1, M = M)    
 
 # Sum-of-two-geoms model
-pmf_2geom  <- avg_pmf(l_vals, psi_i, pL_geom2_2M, phi = 1/res_sum_M1500$mean, M = M) 
+pmf_2geom  <- avg_pmf(l_vals, psi_i, pL_geom2_2M, phi = res_sum_M1500$phi1, M = M) 
 
 # Mixture model
 pmf_mix    <- avg_pmf(l_vals, psi_i, pL_geom_2M_mixture,
