@@ -260,7 +260,7 @@ ggplot(df, aes(l)) +
            aes(y = p), fill = "grey80", width = 1, alpha = 0.8) +
   geom_line(data = dplyr::filter(df, series != "Empirical"),
             aes(y = p, colour = series), linewidth = 0.8) +
-  labs(x = "Tract length", y = "Log 10 probability") +
+  labs(x = "Observed tract length (bp)", y = "Log 10 probability") +
   scale_y_continuous(trans = "log10") +
   scale_color_discrete(
     name   = "Model",

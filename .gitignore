@@ -1,5 +1,6 @@
 robustness_sim/data/sim5_seed1_10Mb_n125000_err0.0002phased_del1.vcf.gz
-robustness_sim_2/data/sim5_seed1_10Mb_n125000_err0.0002phased_del1.vcf.gz
 robustness_sim/results/bootstrap/
+
+robustness_sim_2/data/sim5_seed1_10Mb_n125000_err0.0002phased_del1.vcf.gz
 robustness_sim_2/results/bootstrap/
 robustness_sim_2/sim_tracts/sim_tracts_vcf_*

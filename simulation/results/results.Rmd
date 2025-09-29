@@ -320,7 +320,7 @@ fig_replicate7 <- ggplot(df_7, aes(l)) +
            aes(y = p), fill = "grey", width = 5, alpha = 0.8) +
   geom_line(data = dplyr::filter(df_7, series != "Empirical"),
             aes(y = p, colour = series), linewidth = 0.8) +
-  labs(title = "Replicate 7", x = "Tract length", y = "Log 10 probability") +
+  labs(title = "Replicate 7", x = "Observed tract length (bp)", y = "Log 10 probability") +
   scale_y_continuous(trans = "log10") +
   scale_color_discrete(
     name   = "Model",
@@ -346,7 +346,7 @@ fig_replicate19 <- ggplot(df_19, aes(l)) +
            aes(y = p), fill = "grey", width = 5, alpha = 0.8) +
   geom_line(data = dplyr::filter(df_19, series != "Empirical"),
             aes(y = p, colour = series), linewidth = 0.8) +
-  labs(title = "Replicate 19", x = "Tract length", y = "Log 10 probability") +
+  labs(title = "Replicate 19", x = "Observed tract length (bp)", y = "Log 10 probability") +
   scale_y_continuous(trans = "log10") +
   scale_color_discrete(
     name   = "Model",
